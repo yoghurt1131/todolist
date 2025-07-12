@@ -1077,8 +1077,8 @@ class TodoApp {
 
         console.log(`${this.clipboardTodos.length}件のタスクをコピーしました`);
         
-        // 視覚的フィードバック（短時間のフラッシュ効果）
-        this.showCopyFeedback();
+        // コピー完了の視覚的フィードバック
+        this.showCopyNotification(this.clipboardTodos.length);
     }
 
     pasteClipboardTodos() {
@@ -1113,18 +1113,39 @@ class TodoApp {
         console.log(`${newTodos.length}件のタスクを貼り付けました`);
     }
 
-    showCopyFeedback() {
+    showCopyNotification(count) {
         if (typeof document === 'undefined') return;
 
-        // 選択されたアイテムに短時間のフラッシュ効果
-        const selectedItems = document.querySelectorAll('.todo-item.selected');
-        selectedItems.forEach(item => {
-            item.classList.add('copy-feedback');
+        // 既存の通知があれば削除
+        const existingNotification = document.querySelector('.copy-notification');
+        if (existingNotification) {
+            existingNotification.remove();
+        }
+
+        // 通知要素を作成
+        const notification = document.createElement('div');
+        notification.className = 'copy-notification';
+        notification.textContent = `${count}件のタスクをコピーしました`;
+        
+        // 画面右上に表示
+        document.body.appendChild(notification);
+        
+        // アニメーション開始
+        setTimeout(() => {
+            notification.classList.add('show');
+        }, 10);
+        
+        // 2秒後に自動削除
+        setTimeout(() => {
+            notification.classList.remove('show');
             setTimeout(() => {
-                item.classList.remove('copy-feedback');
-            }, 200);
-        });
+                if (notification.parentNode) {
+                    notification.remove();
+                }
+            }, 300);
+        }, 2000);
     }
+
 }
 
 module.exports = TodoApp;

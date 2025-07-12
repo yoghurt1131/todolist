@@ -335,16 +335,32 @@ body {
     transition: all 0.15s ease;
 }
 
-.todo-item.copy-feedback {
-    background-color: #4caf50;
-    color: white;
-    transform: scale(1.02);
-    transition: all 0.2s ease;
-}
 
 .todo-actions {
     opacity: 0;
     transition: opacity 0.15s ease;
+}
+
+.copy-notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background-color: #007aff;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+    transform: translateX(100%);
+    opacity: 0;
+    transition: all 0.3s ease;
+}
+
+.copy-notification.show {
+    transform: translateX(0);
+    opacity: 1;
 }
 
 .todo-item:hover .todo-actions {
