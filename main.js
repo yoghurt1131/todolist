@@ -3,8 +3,8 @@ const path = require('path');
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
-    width: 800,
-    height: 700,
+    width: 600,
+    height: 600,
     minWidth: 600,
     minHeight: 600,
     webPreferences: {
