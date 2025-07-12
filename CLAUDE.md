@@ -1,10 +1,10 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+このファイルは Claude Code (claude.ai/code) がこのリポジトリのコードで作業する際のガイダンスを提供します。
 
-## Project Overview
+## プロジェクト概要
 
-TODOLIST is an Electron-based TODO application for macOS, designed to provide a local, simple task management tool similar to macOS Reminders app.
+TODOLIST は macOS 用の Electron ベースの TODO アプリケーションで、macOS のリマインダーアプリのようなローカルでシンプルなタスク管理ツールを提供することを目的としています。
 
 ## Development Commands
 
@@ -31,55 +31,90 @@ npm run test:watch
 npm run build-icons
 ```
 
-## Project Structure
+## プロジェクト構造
 
-- `main.js` - Electron main process with window management and app lifecycle
-- `index.html` - Main application UI with split-pane layout (sidebar + main content)
-- `styles.css` - macOS-style CSS with native look and feel
-- `renderer.js` - Entry point that initializes the TodoApp class
-- `src/TodoApp.js` - Core application logic (testable, separated from DOM)
-- `tests/` - Jest unit tests with mocks for Electron and filesystem
-- `package.json` - Electron configuration and build settings
+- `main.js` - ウィンドウ管理とアプリのライフサイクルを処理する Electron メインプロセス
+- `index.html` - 分割ペインレイアウト（サイドバー + メインコンテンツ）のメインアプリケーション UI
+- `styles.css` - ネイティブな見た目と感触を持つ macOS スタイルの CSS
+- `renderer.js` - TodoApp クラスを初期化するエントリーポイント
+- `src/TodoApp.js` - コアアプリケーションロジック（テスト可能、DOM から分離）
+- `tests/` - Electron とファイルシステムのモックによる Jest ユニットテスト
+- `package.json` - Electron の設定とビルド設定
 
-## Architecture
+## アーキテクチャ
 
-### Data Management
-- Local JSON file storage in app data directory (`tododata.json`)
-- Real-time auto-save on all operations
-- Simple data structure: lists array + todos array with foreign key relationships
+### データ管理
 
-### UI Components
-- **Left Sidebar**: List management, "すべて" (All) default list
-- **Right Panel**: TODO items with completion checkboxes and delete actions
-- **Modals**: List creation/editing dialogs
-- **Forms**: Inline TODO addition at bottom
+- アプリデータディレクトリ内のローカル JSON ファイルストレージ（`tododata.json`）
+- すべての操作におけるリアルタイム自動保存
+- シンプルなデータ構造：外部キー関係を持つ lists と todos の配列
 
-### Key Features (Phase 1 MVP)
-- Multiple list creation/deletion (except default "すべて" list)
-- TODO add/complete/delete functionality
-- Inline editing: Double-click TODO text or list names to edit
-- Resizable sidebar with persistent width settings
-- Persistent local storage
-- macOS-native styling with sidebar vibrancy
+### UI コンポーネント
 
-## Technical Notes
+- **左サイドバー**: リスト管理、「すべて」デフォルトリスト
+- **右パネル**: 完了チェックボックスと削除アクションを持つ TODO アイテム
+- **モーダル**: リスト作成/編集ダイアログ
+- **フォーム**: 下部のインライン TODO 追加
 
-- Uses `nodeIntegration: true` for file system access
-- Window configured with `hiddenInset` title bar and `sidebar` vibrancy for native macOS feel
-- Data stored in Electron's `userData` directory automatically
-- Context menu on custom lists enables deletion (right-click)
-- Keyboard shortcuts: Enter to save, Escape to cancel in forms
+## 機能要件
 
-## Testing
+### 主要機能（フェーズ 1 MVP）
 
-- Unit tests with Jest covering all core functionality
-- Mocked Electron and filesystem dependencies for isolated testing
-- 25 test cases covering initialization, data persistence, list/todo management
-- Run `npm test` for full test suite or `npm run test:watch` for development
+- 複数リストの作成/削除（デフォルト「すべて」リストを除く）
+- TODO 追加/完了/削除機能
+- インライン編集: TODO テキストやリスト名のダブルクリックで編集
+- 永続的な幅設定のリサイズ可能サイドバー
+- 永続的なローカルストレージ
+- サイドバーバイブランシーによる macOS ネイティブスタイリング
 
-## Requirements Reference
+### 必須機能
 
-The original requirements are preserved in Japanese as comments within the codebase for reference. Key points:
-- Phase 1 (MVP): Basic list/TODO management, simple UI, local data storage
-- Phase 2: Due dates/notifications, export, search
-- Phase 3: UI/UX improvements, performance optimization
+1. **リスト管理**
+
+   - 複数のリスト作成・編集・削除
+   - リスト名の変更
+   - リスト間の切り替え
+
+2. **TODO 管理**
+
+   - TODO 項目の追加・編集・削除
+   - 完了/未完了の切り替え
+   - 期限設定機能
+
+3. **リマインド機能**
+
+   - 期限に基づく通知
+   - 通知のタイミング設定
+
+4. **エクスポート機能**
+   - テキスト形式でのデータエクスポート
+   - ユーザー指定の保存場所への出力
+
+### 任意機能
+
+- 検索機能（上部検索バー）
+- 今日/期限設定済み等のスマートリスト
+- 完了済みタスクの表示切り替え
+
+## 技術的注意事項
+
+- ファイルシステムアクセスのため`nodeIntegration: true`を使用
+- ネイティブ macOS の感触のため`hiddenInset`タイトルバーと`sidebar`バイブランシーでウィンドウを設定
+- データは自動的に Electron の`userData`ディレクトリに保存
+- カスタムリストのコンテキストメニューで削除が可能（右クリック）
+- キーボードショートカット: Enter で保存、Escape でフォームキャンセル
+
+## テスト
+
+- すべてのコア機能をカバーする Jest によるユニットテスト
+- 分離されたテストのための Electron とファイルシステム依存関係のモック
+- 初期化、データ永続化、リスト/TODO 管理をカバーする 25 のテストケース
+- 完全なテストスイートには`npm test`、開発用には`npm run test:watch`を実行
+
+## 要件リファレンス
+
+元の要件は参照用としてコードベース内のコメントで日本語で保存されています。主なポイント：
+
+- フェーズ 1（MVP）: 基本的なリスト/TODO 管理、シンプルな UI、ローカルデータストレージ
+- フェーズ 2: 期限/通知、エクスポート、検索
+- フェーズ 3: UI/UX 改善、パフォーマンス最適化
