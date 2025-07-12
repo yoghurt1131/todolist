@@ -1,8 +1,10 @@
-const { app, BrowserWindow, Menu } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain } = require('electron');
 const path = require('path');
 
+let mainWindow;
+
 function createWindow() {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 600,
     height: 600,
     minWidth: 600,
@@ -21,6 +23,8 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
+    // レンダラープロセスにapp準備完了を通知
+    mainWindow.webContents.send('app-ready');
   });
 
   // Only open DevTools in development mode with explicit flag
@@ -31,6 +35,20 @@ function createWindow() {
 
 app.whenReady().then(createWindow);
 
+// レンダラープロセスからのユーザーデータパス要求に応答
+ipcMain.handle('get-user-data-path', () => {
+  return app.getPath('userData');
+});
+
+ipcMain.handle('get-app-info', () => {
+  return {
+    name: app.getName(),
+    version: app.getVersion(),
+    isPackaged: app.isPackaged,
+    userDataPath: app.getPath('userData')
+  };
+});
+
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
@@ -40,6 +58,21 @@ app.on('window-all-closed', () => {
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
+  }
+});
+
+// アプリケーション終了時にデータを保存
+app.on('before-quit', (event) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    // レンダラープロセスにデータ保存を指示
+    mainWindow.webContents.send('save-data-before-quit');
+  }
+});
+
+app.on('will-quit', (event) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    // 最終保存の確認
+    mainWindow.webContents.send('final-save-data');
   }
 });
 

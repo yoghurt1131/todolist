@@ -1,5 +1,5 @@
 {
-  "name": "todolist-app",
+  "name": "TODOLIST",
   "version": "1.0.0",
   "description": "TODOLIST - macOS-style TODO application built with Electron",
   "main": "main.js",

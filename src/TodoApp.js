@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { app } = require('electron');
+const { ipcRenderer } = require('electron');
 
 class TodoApp {
     constructor(dataPath = null) {
@@ -10,7 +10,7 @@ class TodoApp {
         this.selectedTodoIds = new Set();
         this.lastSelectedTodoId = null;
         this.clipboardTodos = []; // コピーされたTODOのデータ
-        this.dataPath = dataPath || (app ? path.join(app.getPath('userData'), 'tododata.json') : './tododata.json');
+        this.dataPath = dataPath; // 初期化時は仮設定
         this.eventListeners = {};
 
         // Undo機能用の履歴管理
@@ -18,7 +18,10 @@ class TodoApp {
         this.maxUndoSize = 50; // 最大50回まで戻せる
     }
 
-    initializeApp() {
+    async initializeApp() {
+        // IPCでメインプロセスからユーザーデータパスを取得
+        await this.setupDataPath();
+        
         this.loadData();
         if (typeof document !== 'undefined') {
             this.initializeSidebar();
@@ -26,6 +29,32 @@ class TodoApp {
             this.renderTodos();
             this.bindEvents();
             this.bindResizer();
+        }
+    }
+
+    async setupDataPath() {
+        if (this.dataPath) {
+            // 既に設定済みの場合はそれを使用
+            return;
+        }
+
+        try {
+            // IPCでメインプロセスからユーザーデータパスを取得
+            const userDataPath = await ipcRenderer.invoke('get-user-data-path');
+            this.dataPath = path.join(userDataPath, 'tododata.json');
+            
+            // アプリ情報も取得してデバッグ出力
+            const appInfo = await ipcRenderer.invoke('get-app-info');
+            console.log('App info:', appInfo);
+            console.log('Data path:', this.dataPath);
+            
+            // 権限チェック
+            this.checkPermissions();
+        } catch (error) {
+            console.warn('Failed to get user data path via IPC:', error);
+            // フォールバック：ホームディレクトリを使用
+            this.dataPath = path.join(require('os').homedir(), '.todolist', 'tododata.json');
+            console.warn('Using fallback path:', this.dataPath);
         }
     }
 
@@ -55,9 +84,68 @@ class TodoApp {
                 lists: this.lists,
                 todos: this.todos
             };
+            console.log('Saving data to:', this.dataPath);
+            console.log('Data to save:', JSON.stringify(data, null, 2));
+            
+            // ディレクトリが存在するか確認
+            const dir = path.dirname(this.dataPath);
+            if (!fs.existsSync(dir)) {
+                console.log('Creating directory:', dir);
+                fs.mkdirSync(dir, { recursive: true });
+            }
+            
             fs.writeFileSync(this.dataPath, JSON.stringify(data, null, 2));
+            console.log('Data saved successfully');
+            
+            // 保存後に確認
+            if (fs.existsSync(this.dataPath)) {
+                console.log('File exists after save');
+            } else {
+                console.error('File does not exist after save attempt');
+            }
         } catch (error) {
             console.error('データの保存に失敗:', error);
+            console.error('Error details:', {
+                code: error.code,
+                path: error.path,
+                syscall: error.syscall,
+                errno: error.errno
+            });
+        }
+    }
+
+    checkPermissions() {
+        try {
+            const dir = path.dirname(this.dataPath);
+            console.log('Checking permissions for directory:', dir);
+            
+            // ディレクトリの読み取り権限
+            try {
+                fs.accessSync(dir, fs.constants.R_OK);
+                console.log('Directory read permission: OK');
+            } catch (e) {
+                console.error('Directory read permission: DENIED');
+            }
+            
+            // ディレクトリの書き込み権限
+            try {
+                fs.accessSync(dir, fs.constants.W_OK);
+                console.log('Directory write permission: OK');
+            } catch (e) {
+                console.error('Directory write permission: DENIED');
+            }
+            
+            // ファイルが存在する場合の権限チェック
+            if (fs.existsSync(this.dataPath)) {
+                try {
+                    fs.accessSync(this.dataPath, fs.constants.R_OK | fs.constants.W_OK);
+                    console.log('File read/write permission: OK');
+                } catch (e) {
+                    console.error('File read/write permission: DENIED');
+                }
+            }
+        } catch (error) {
+            console.error('Permission check failed:', error);
         }
     }
 
