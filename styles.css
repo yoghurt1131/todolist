@@ -363,6 +363,7 @@ body {
     opacity: 1;
 }
 
+
 .todo-item:hover .todo-actions {
     opacity: 1;
 }
