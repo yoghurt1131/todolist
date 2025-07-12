@@ -492,13 +492,13 @@ body {
 }
 
 .edit-input {
-    background: transparent;
+    background: white;
     border: 1px solid #007aff;
     border-radius: 4px;
     padding: 2px 6px;
     font-size: inherit;
     font-family: inherit;
-    color: inherit;
+    color: #1a1a1a;
     outline: none;
     width: 100%;
     min-width: 100px;
@@ -506,6 +506,7 @@ body {
 
 .edit-input:focus {
     background-color: white;
+    color: #000000;
     box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2);
 }
 

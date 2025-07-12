@@ -673,6 +673,14 @@ class TodoApp {
 
     renderTodos() {
         if (typeof document === 'undefined') return;
+        
+        // 編集中のTODOがある場合は再レンダリングを避ける
+        const editingElement = document.querySelector('.todo-text.editing');
+        if (editingElement) {
+            console.log('Skipping render: todo is being edited');
+            return;
+        }
+        
         const todosContainer = document.getElementById('todosContainer');
         const currentListTitle = document.querySelector('.current-list-title');
 
@@ -732,7 +740,9 @@ class TodoApp {
             }
 
             if (text) {
-                // シングルクリックで選択
+                let clickTimeout = null;
+
+                // クリックイベント（シングル/ダブルクリックを区別）
                 text.addEventListener('click', (e) => {
                     // 編集中の場合は何もしない
                     if (text.classList.contains('editing')) {
@@ -740,11 +750,28 @@ class TodoApp {
                     }
 
                     e.stopPropagation();
-                    const isMultiSelect = e.metaKey || e.ctrlKey;
-                    const isRangeSelect = e.shiftKey;
 
-                    this.selectTodo(todo.id, isMultiSelect, isRangeSelect);
-                    this.renderTodos();
+                    // ダブルクリック検出のためのタイムアウト処理
+                    if (clickTimeout) {
+                        // ダブルクリックが発生した場合
+                        clearTimeout(clickTimeout);
+                        clickTimeout = null;
+                        
+                        // ダブルクリックで編集モード
+                        e.preventDefault();
+                        this.startEditingTodo(todo.id, text);
+                        return;
+                    }
+
+                    // シングルクリックの場合、少し待ってから処理
+                    clickTimeout = setTimeout(() => {
+                        clickTimeout = null;
+                        const isMultiSelect = e.metaKey || e.ctrlKey;
+                        const isRangeSelect = e.shiftKey;
+
+                        this.selectTodo(todo.id, isMultiSelect, isRangeSelect);
+                        this.renderTodos();
+                    }, 250);
                 });
 
                 // Shift+マウスオーバーで範囲選択プレビュー
@@ -756,14 +783,6 @@ class TodoApp {
 
                 text.addEventListener('mouseleave', (e) => {
                     this.hideRangePreview();
-                });
-
-                // ダブルクリックで編集モード
-                text.addEventListener('dblclick', (e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-
-                    this.startEditingTodo(todo.id, text);
                 });
 
                 // 右クリックでコンテキストメニュー
@@ -849,6 +868,18 @@ class TodoApp {
         const todo = this.todos.find(t => t.id === todoId);
         if (!todo) return;
 
+        // 現在の要素を再取得（DOM再構築に対応）
+        const currentTextElement = textElement || document.querySelector(`[data-todo-id="${todoId}"] .todo-text`);
+        if (!currentTextElement) {
+            console.warn('Text element not found for todo:', todoId);
+            return;
+        }
+
+        // 既に編集中の場合は何もしない
+        if (currentTextElement.classList.contains('editing')) {
+            return;
+        }
+
         const originalText = todo.text;
 
         // 編集用input要素を作成
@@ -858,9 +889,9 @@ class TodoApp {
         input.value = originalText;
 
         // 編集モードにする
-        textElement.classList.add('editing');
-        textElement.innerHTML = '';
-        textElement.appendChild(input);
+        currentTextElement.classList.add('editing');
+        currentTextElement.innerHTML = '';
+        currentTextElement.appendChild(input);
 
         // フォーカスして全選択
         input.focus();
@@ -870,20 +901,27 @@ class TodoApp {
         const saveEdit = () => {
             const newText = input.value.trim();
             if (newText && newText !== originalText) {
+                // Undo履歴に追加
+                this.addToUndoStack({
+                    type: 'editTodo',
+                    todoId: todoId,
+                    previousText: originalText,
+                    newText: newText
+                });
                 this.updateTodo(todoId, newText);
             }
-            this.endEditingTodo(textElement, todo.text);
+            this.endEditingTodo(currentTextElement, newText || originalText);
             this.renderTodos();
             this.renderLists();
         };
 
         const cancelEdit = () => {
-            this.endEditingTodo(textElement, originalText);
+            this.endEditingTodo(currentTextElement, originalText);
         };
 
         // イベントリスナー
         input.addEventListener('blur', saveEdit);
-        input.addEventListener('keypress', (e) => {
+        input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
                 saveEdit();

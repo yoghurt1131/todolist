@@ -291,4 +291,178 @@ describe('TodoApp', () => {
             expect(typeof id2).toBe('string');
         });
     });
+
+    describe('Double-click editing functionality', () => {
+        beforeEach(() => {
+            // DOM環境のセットアップ
+            document.body.innerHTML = `
+                <div id="todosContainer"></div>
+                <div class="current-list-title"></div>
+            `;
+            
+            // テストデータをセットアップ
+            todoApp.lists = [
+                { id: 'default', name: 'すべて', createdAt: '2023-01-01T00:00:00.000Z' }
+            ];
+            todoApp.todos = [
+                { id: 'test-todo-1', text: '編集テスト用タスク', completed: false, listId: null, createdAt: '2023-01-01T00:00:00.000Z' }
+            ];
+            todoApp.currentListId = 'default';
+        });
+
+        test('should start editing mode when double-clicking on todo text', () => {
+            // TodoAppをレンダリング
+            todoApp.renderTodos();
+            
+            const todoText = document.querySelector('.todo-text');
+            expect(todoText).toBeTruthy();
+            expect(todoText.textContent).toBe('編集テスト用タスク');
+
+            // ダブルクリックをシミュレート
+            todoApp.startEditingTodo('test-todo-1', todoText);
+
+            // 編集モードに入ったか確認
+            expect(todoText.classList.contains('editing')).toBe(true);
+            
+            const editInput = todoText.querySelector('.edit-input');
+            expect(editInput).toBeTruthy();
+            expect(editInput.value).toBe('編集テスト用タスク');
+        });
+
+        test('should save changes when Enter key is pressed', (done) => {
+            todoApp.renderTodos();
+            const todoText = document.querySelector('.todo-text');
+            
+            // 編集モードに入る
+            todoApp.startEditingTodo('test-todo-1', todoText);
+            const editInput = todoText.querySelector('.edit-input');
+            
+            // テキストを変更
+            editInput.value = '変更されたタスク';
+            
+            // Enterキーイベントをシミュレート
+            const enterEvent = new KeyboardEvent('keydown', { key: 'Enter' });
+            editInput.dispatchEvent(enterEvent);
+            
+            // 非同期でテストを続行
+            setTimeout(() => {
+                // TODOが更新されたか確認
+                const updatedTodo = todoApp.todos.find(t => t.id === 'test-todo-1');
+                expect(updatedTodo.text).toBe('変更されたタスク');
+                
+                // 編集モードが終了したか確認
+                expect(todoText.classList.contains('editing')).toBe(false);
+                done();
+            }, 10);
+        });
+
+        test('should cancel changes when Escape key is pressed', () => {
+            todoApp.renderTodos();
+            const todoText = document.querySelector('.todo-text');
+            
+            // 編集モードに入る
+            todoApp.startEditingTodo('test-todo-1', todoText);
+            const editInput = todoText.querySelector('.edit-input');
+            
+            // テキストを変更
+            editInput.value = '破棄されるべきテキスト';
+            
+            // Escapeキーイベントをシミュレート
+            const escapeEvent = new KeyboardEvent('keydown', { key: 'Escape' });
+            editInput.dispatchEvent(escapeEvent);
+            
+            // TODOが変更されていないか確認
+            const todo = todoApp.todos.find(t => t.id === 'test-todo-1');
+            expect(todo.text).toBe('編集テスト用タスク');
+            
+            // 編集モードが終了したか確認
+            expect(todoText.classList.contains('editing')).toBe(false);
+        });
+
+        test('should not start editing if todo is already being edited', () => {
+            todoApp.renderTodos();
+            const todoText = document.querySelector('.todo-text');
+            
+            // 最初の編集モードに入る
+            todoApp.startEditingTodo('test-todo-1', todoText);
+            expect(todoText.classList.contains('editing')).toBe(true);
+            
+            const firstEditInput = todoText.querySelector('.edit-input');
+            firstEditInput.value = '最初の編集';
+            
+            // 再度編集を試みる
+            todoApp.startEditingTodo('test-todo-1', todoText);
+            
+            // 依然として最初の編集状態のまま
+            expect(todoText.classList.contains('editing')).toBe(true);
+            const currentInput = todoText.querySelector('.edit-input');
+            expect(currentInput.value).toBe('最初の編集');
+        });
+
+        test('should handle non-existent todo gracefully', () => {
+            todoApp.renderTodos();
+            const todoText = document.querySelector('.todo-text');
+            
+            // 存在しないTODO IDで編集を試みる
+            const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+            todoApp.startEditingTodo('non-existent-id', todoText);
+            
+            // 編集モードに入らない
+            expect(todoText.classList.contains('editing')).toBe(false);
+            
+            consoleSpy.mockRestore();
+        });
+
+        test('should skip rendering when todo is being edited', () => {
+            todoApp.renderTodos();
+            const todoText = document.querySelector('.todo-text');
+            
+            // 編集モードに入る
+            todoApp.startEditingTodo('test-todo-1', todoText);
+            expect(todoText.classList.contains('editing')).toBe(true);
+            
+            // ログスパイをセットアップ
+            const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+            
+            // 編集中にrenderTodosを呼び出す
+            todoApp.renderTodos();
+            
+            // スキップメッセージが表示されるか確認
+            expect(consoleSpy).toHaveBeenCalledWith('Skipping render: todo is being edited');
+            
+            // 編集状態が維持されているか確認
+            expect(todoText.classList.contains('editing')).toBe(true);
+            
+            consoleSpy.mockRestore();
+        });
+
+        test('should add undo history when todo is edited', (done) => {
+            todoApp.renderTodos();
+            const todoText = document.querySelector('.todo-text');
+            
+            // Undo履歴をクリア
+            todoApp.undoStack = [];
+            
+            // 編集モードに入る
+            todoApp.startEditingTodo('test-todo-1', todoText);
+            const editInput = todoText.querySelector('.edit-input');
+            
+            // テキストを変更して保存
+            editInput.value = 'Undo履歴テスト';
+            const enterEvent = new KeyboardEvent('keydown', { key: 'Enter' });
+            editInput.dispatchEvent(enterEvent);
+            
+            // 非同期でテストを続行
+            setTimeout(() => {
+                // Undo履歴が追加されたか確認（重複を避けるため最後の1件を確認）
+                expect(todoApp.undoStack.length).toBeGreaterThan(0);
+                const lastUndo = todoApp.undoStack[todoApp.undoStack.length - 1];
+                expect(lastUndo.type).toBe('editTodo');
+                expect(lastUndo.todoId).toBe('test-todo-1');
+                expect(lastUndo.previousText).toBe('編集テスト用タスク');
+                expect(lastUndo.newText).toBe('Undo履歴テスト');
+                done();
+            }, 10);
+        });
+    });
 });
