@@ -16,6 +16,15 @@ const fs = {
     mockFileData[path] = data;
   }),
 
+  mkdirSync: jest.fn(),
+  
+  accessSync: jest.fn(),
+
+  constants: {
+    R_OK: 4,
+    W_OK: 2
+  },
+
   // Helper function for tests to set mock data
   __setMockFileData: (data) => {
     mockFileData = { ...data };

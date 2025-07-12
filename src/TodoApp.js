@@ -1,6 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 const { ipcRenderer } = require('electron');
+const DataManager = require('./DataManager');
+const UndoManager = require('./UndoManager');
 
 class TodoApp {
     constructor(dataPath = null) {
@@ -10,17 +12,16 @@ class TodoApp {
         this.selectedTodoIds = new Set();
         this.lastSelectedTodoId = null;
         this.clipboardTodos = []; // コピーされたTODOのデータ
-        this.dataPath = dataPath; // 初期化時は仮設定
         this.eventListeners = {};
 
-        // Undo機能用の履歴管理
-        this.undoStack = [];
-        this.maxUndoSize = 50; // 最大50回まで戻せる
+        // モジュール化されたコンポーネント
+        this.dataManager = new DataManager(dataPath);
+        this.undoManager = new UndoManager(50);
     }
 
     async initializeApp() {
-        // IPCでメインプロセスからユーザーデータパスを取得
-        await this.setupDataPath();
+        // DataManagerでデータパスをセットアップ
+        await this.dataManager.setupDataPath();
         
         this.loadData();
         if (typeof document !== 'undefined') {
@@ -32,121 +33,18 @@ class TodoApp {
         }
     }
 
-    async setupDataPath() {
-        if (this.dataPath) {
-            // 既に設定済みの場合はそれを使用
-            return;
-        }
-
-        try {
-            // IPCでメインプロセスからユーザーデータパスを取得
-            const userDataPath = await ipcRenderer.invoke('get-user-data-path');
-            this.dataPath = path.join(userDataPath, 'tododata.json');
-            
-            // アプリ情報も取得してデバッグ出力
-            const appInfo = await ipcRenderer.invoke('get-app-info');
-            console.log('App info:', appInfo);
-            console.log('Data path:', this.dataPath);
-            
-            // 権限チェック
-            this.checkPermissions();
-        } catch (error) {
-            console.warn('Failed to get user data path via IPC:', error);
-            // フォールバック：ホームディレクトリを使用
-            this.dataPath = path.join(require('os').homedir(), '.todolist', 'tododata.json');
-            console.warn('Using fallback path:', this.dataPath);
-        }
-    }
-
     loadData() {
-        try {
-            if (fs.existsSync(this.dataPath)) {
-                const data = JSON.parse(fs.readFileSync(this.dataPath, 'utf8'));
-                this.lists = data.lists || [];
-                this.todos = data.todos || [];
-            }
-        } catch (error) {
-            console.error('データの読み込みに失敗:', error);
-        }
-
-        if (this.lists.length === 0) {
-            this.lists.push({
-                id: 'default',
-                name: 'すべて',
-                createdAt: new Date().toISOString()
-            });
-        }
+        const data = this.dataManager.loadData();
+        this.lists = data.lists;
+        this.todos = data.todos;
     }
 
     saveData() {
-        try {
-            const data = {
-                lists: this.lists,
-                todos: this.todos
-            };
-            console.log('Saving data to:', this.dataPath);
-            console.log('Data to save:', JSON.stringify(data, null, 2));
-            
-            // ディレクトリが存在するか確認
-            const dir = path.dirname(this.dataPath);
-            if (!fs.existsSync(dir)) {
-                console.log('Creating directory:', dir);
-                fs.mkdirSync(dir, { recursive: true });
-            }
-            
-            fs.writeFileSync(this.dataPath, JSON.stringify(data, null, 2));
-            console.log('Data saved successfully');
-            
-            // 保存後に確認
-            if (fs.existsSync(this.dataPath)) {
-                console.log('File exists after save');
-            } else {
-                console.error('File does not exist after save attempt');
-            }
-        } catch (error) {
-            console.error('データの保存に失敗:', error);
-            console.error('Error details:', {
-                code: error.code,
-                path: error.path,
-                syscall: error.syscall,
-                errno: error.errno
-            });
-        }
-    }
-
-    checkPermissions() {
-        try {
-            const dir = path.dirname(this.dataPath);
-            console.log('Checking permissions for directory:', dir);
-            
-            // ディレクトリの読み取り権限
-            try {
-                fs.accessSync(dir, fs.constants.R_OK);
-                console.log('Directory read permission: OK');
-            } catch (e) {
-                console.error('Directory read permission: DENIED');
-            }
-            
-            // ディレクトリの書き込み権限
-            try {
-                fs.accessSync(dir, fs.constants.W_OK);
-                console.log('Directory write permission: OK');
-            } catch (e) {
-                console.error('Directory write permission: DENIED');
-            }
-            
-            // ファイルが存在する場合の権限チェック
-            if (fs.existsSync(this.dataPath)) {
-                try {
-                    fs.accessSync(this.dataPath, fs.constants.R_OK | fs.constants.W_OK);
-                    console.log('File read/write permission: OK');
-                } catch (e) {
-                    console.error('File read/write permission: DENIED');
-                }
-            }
-        } catch (error) {
-            console.error('Permission check failed:', error);
-        }
+        const data = {
+            lists: this.lists,
+            todos: this.todos
+        };
+        this.dataManager.saveData(data);
     }
 
     generateId() {
@@ -1345,98 +1243,73 @@ class TodoApp {
 
     // Undo履歴に操作を記録
     addToUndoStack(action) {
-        this.undoStack.push(action);
-
-        // 最大サイズを超えた場合は古い履歴を削除
-        if (this.undoStack.length > this.maxUndoSize) {
-            this.undoStack.shift();
-        }
+        this.undoManager.addAction(action);
     }
 
     // Undo操作の実行
     undo() {
-        if (this.undoStack.length === 0) {
-            console.log('Undoできる操作がありません');
-            return false;
-        }
-
-        const action = this.undoStack.pop();
-        console.log('Undo実行:', action);
-
-        try {
-            switch (action.type) {
-                case 'addTodo':
-                    // TODOの追加をundo（削除）
-                    this.todos = this.todos.filter(todo => todo.id !== action.todoId);
-                    break;
-
-                case 'deleteTodo':
-                    // TODOの削除をundo（復元）
-                    this.todos.push(action.todoData);
-                    break;
-
-                case 'toggleTodo':
-                    // TODOの完了状態変更をundo
-                    const toggleTodo = this.todos.find(todo => todo.id === action.todoId);
-                    if (toggleTodo) {
-                        toggleTodo.completed = action.previousState;
+        // UndoManagerでTODO操作とリスト操作を分離する必要があるため、
+        // 一時的に現在の実装を維持し、操作メソッドをラッパーとして提供
+        const operations = {
+            todoOps: {
+                deleteTodoById: (todoId) => {
+                    this.todos = this.todos.filter(todo => todo.id !== todoId);
+                },
+                restoreTodo: (todo) => {
+                    this.todos.push(todo);
+                },
+                toggleTodoById: (todoId) => {
+                    const todo = this.todos.find(t => t.id === todoId);
+                    if (todo) {
+                        todo.completed = !todo.completed;
                     }
-                    break;
-
-                case 'editTodo':
-                    // TODOの編集をundo
-                    const editTodo = this.todos.find(todo => todo.id === action.todoId);
-                    if (editTodo) {
-                        editTodo.text = action.previousText;
+                },
+                updateTodoById: (todoId, newText) => {
+                    const todo = this.todos.find(t => t.id === todoId);
+                    if (todo) {
+                        todo.text = newText;
                     }
-                    break;
-
-                case 'addList':
-                    // リストの追加をundo（削除）
-                    this.lists = this.lists.filter(list => list.id !== action.listId);
-                    if (this.currentListId === action.listId) {
+                },
+                moveTodosToListById: (todoIds, targetListId) => {
+                    todoIds.forEach(todoId => {
+                        const todo = this.todos.find(t => t.id === todoId);
+                        if (todo) {
+                            todo.listId = targetListId === 'default' ? null : targetListId;
+                        }
+                    });
+                }
+            },
+            listOps: {
+                deleteListById: (listId) => {
+                    this.lists = this.lists.filter(list => list.id !== listId);
+                    if (this.currentListId === listId) {
                         this.currentListId = 'default';
                     }
-                    break;
-
-                case 'deleteList':
-                    // リストの削除をundo（復元）
-                    this.lists.push(action.listData);
-                    // 削除されたTODOも復元
-                    if (action.deletedTodos) {
-                        this.todos.push(...action.deletedTodos);
+                },
+                restoreList: (list, todos) => {
+                    this.lists.push(list);
+                    if (todos) {
+                        this.todos.push(...todos);
                     }
-                    break;
-
-                case 'editList':
-                    // リストの編集をundo
-                    const editList = this.lists.find(list => list.id === action.listId);
-                    if (editList) {
-                        editList.name = action.previousName;
+                },
+                updateListById: (listId, newName) => {
+                    const list = this.lists.find(l => l.id === listId);
+                    if (list) {
+                        list.name = newName;
                     }
-                    break;
-
-                case 'pasteTodos':
-                    // TODOの貼り付けをundo（追加されたTODOを削除）
-                    action.addedTodoIds.forEach(id => {
-                        this.todos = this.todos.filter(todo => todo.id !== id);
-                    });
-                    break;
-
-                default:
-                    console.warn('未知のUndo操作タイプ:', action.type);
-                    return false;
+                }
             }
+        };
 
+        const success = this.undoManager.undo(operations);
+        
+        if (success) {
             this.saveData();
             this.renderTodos();
             this.renderLists();
-            return true;
-
-        } catch (error) {
-            console.error('Undo操作中にエラーが発生:', error);
-            return false;
         }
+        
+        return success;
     }
 
     showCopyNotification(count) {
