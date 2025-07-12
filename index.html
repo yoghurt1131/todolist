@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TODOLIST</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- ドラッグ可能エリア -->
+    <div class="drag-region"></div>
+    
+    <div class="app-container">
+        <!-- 左側: リスト一覧 -->
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h2>リスト</h2>
+                <button class="add-list-btn" id="addListBtn">+</button>
+            </div>
+            
+            <div class="lists-container">
+                <div class="list-item active" data-list-id="default">
+                    <span class="list-name">すべて</span>
+                    <span class="list-count">0</span>
+                </div>
+            </div>
+            
+            <div class="sidebar-footer">
+                <button class="new-list-btn" id="newListBtn">新規リスト</button>
+            </div>
+        </div>
+
+        <!-- リサイザー -->
+        <div class="resizer" id="resizer"></div>
+
+        <!-- 右側: TODO一覧 -->
+        <div class="main-content">
+            <div class="main-header">
+                <h1 class="current-list-title">すべて</h1>
+                <button class="add-todo-btn" id="addTodoBtn">+ 新規</button>
+            </div>
+            
+            <div class="todos-container" id="todosContainer">
+                <div class="empty-state">
+                    <p>タスクがありません</p>
+                    <p class="empty-subtitle">「+ 新規」ボタンでタスクを追加しましょう</p>
+                </div>
+            </div>
+            
+            <div class="add-todo-form hidden" id="addTodoForm">
+                <input type="text" placeholder="新しいタスクを入力..." id="todoInput">
+                <div class="form-actions">
+                    <button class="btn-cancel" id="cancelBtn">キャンセル</button>
+                    <button class="btn-save" id="saveBtn">保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- リスト作成/編集ダイアログ -->
+    <div class="modal hidden" id="listModal">
+        <div class="modal-content">
+            <h3 id="modalTitle">新規リスト</h3>
+            <input type="text" placeholder="リスト名を入力..." id="listNameInput">
+            <div class="modal-actions">
+                <button class="btn-cancel" id="modalCancelBtn">キャンセル</button>
+                <button class="btn-save" id="modalSaveBtn">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="renderer.js"></script>
+</body>
+</html>

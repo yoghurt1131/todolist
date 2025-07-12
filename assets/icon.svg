@@ -1,0 +1,40 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background with subtle gradient -->
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f8f9fa;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#e9ecef;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="checkGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#007aff;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0056cc;stop-opacity:1" />
+    </linearGradient>
+    <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="8" stdDeviation="16" flood-color="#000000" flood-opacity="0.1"/>
+    </filter>
+  </defs>
+  
+  <!-- App icon background with rounded corners -->
+  <rect x="64" y="64" width="896" height="896" rx="192" ry="192" fill="url(#bgGradient)" stroke="#d1d5db" stroke-width="2" filter="url(#shadow)"/>
+  
+  <!-- Checkmark circle (completed task) -->
+  <circle cx="320" cy="280" r="48" fill="url(#checkGradient)" stroke="#ffffff" stroke-width="4"/>
+  <path d="M295 280 L312 297 L345 264" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  
+  <!-- Uncompleted task circles -->
+  <circle cx="320" cy="400" r="48" fill="none" stroke="#6b7280" stroke-width="4"/>
+  <circle cx="320" cy="520" r="48" fill="none" stroke="#6b7280" stroke-width="4"/>
+  <circle cx="320" cy="640" r="48" fill="none" stroke="#6b7280" stroke-width="4"/>
+  
+  <!-- Task lines (completed - with strikethrough) -->
+  <line x1="400" y1="280" x2="720" y2="280" stroke="#9ca3af" stroke-width="8" stroke-linecap="round"/>
+  <line x1="400" y1="280" x2="720" y2="280" stroke="#d1d5db" stroke-width="3" stroke-linecap="round"/>
+  
+  <!-- Task lines (uncompleted) -->
+  <line x1="400" y1="400" x2="720" y2="400" stroke="#374151" stroke-width="8" stroke-linecap="round"/>
+  <line x1="400" y1="520" x2="650" y2="520" stroke="#374151" stroke-width="8" stroke-linecap="round"/>
+  <line x1="400" y1="640" x2="580" y2="640" stroke="#374151" stroke-width="8" stroke-linecap="round"/>
+  
+  <!-- App title at bottom -->
+  <text x="512" y="800" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="64" font-weight="600" text-anchor="middle" fill="#374151">TODOLIST</text>
+</svg>
