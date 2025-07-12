@@ -421,6 +421,37 @@ body {
     justify-content: flex-end;
 }
 
+/* インライン編集 */
+.editable {
+    position: relative;
+}
+
+.edit-input {
+    background: transparent;
+    border: 1px solid #007aff;
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: inherit;
+    font-family: inherit;
+    color: inherit;
+    outline: none;
+    width: 100%;
+    min-width: 100px;
+}
+
+.edit-input:focus {
+    background-color: white;
+    box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2);
+}
+
+.list-name.editing {
+    padding: 0;
+}
+
+.todo-text.editing {
+    padding: 0;
+}
+
 /* ユーティリティ */
 .hidden {
     display: none !important;

@@ -57,6 +57,8 @@ npm run build-icons
 ### Key Features (Phase 1 MVP)
 - Multiple list creation/deletion (except default "すべて" list)
 - TODO add/complete/delete functionality
+- Inline editing: Double-click TODO text or list names to edit
+- Resizable sidebar with persistent width settings
 - Persistent local storage
 - macOS-native styling with sidebar vibrancy
 

@@ -84,6 +84,16 @@ class TodoApp {
         return null;
     }
 
+    updateTodo(todoId, newText) {
+        const todo = this.todos.find(t => t.id === todoId);
+        if (todo && newText && newText.trim()) {
+            todo.text = newText.trim();
+            this.saveData();
+            return todo;
+        }
+        return null;
+    }
+
     deleteTodo(todoId) {
         const initialLength = this.todos.length;
         this.todos = this.todos.filter(t => t.id !== todoId);
@@ -106,6 +116,16 @@ class TodoApp {
         this.lists.push(list);
         this.saveData();
         return list;
+    }
+
+    updateList(listId, newName) {
+        const list = this.lists.find(l => l.id === listId);
+        if (list && newName && newName.trim() && listId !== 'default') {
+            list.name = newName.trim();
+            this.saveData();
+            return list;
+        }
+        return null;
     }
 
     deleteList(listId) {
@@ -311,11 +331,54 @@ class TodoApp {
                 <span class="list-count">${count}</span>
             `;
 
-            listItem.addEventListener('click', () => {
-                this.selectList(list.id);
-                this.renderLists();
-                this.renderTodos();
+            const listNameElement = listItem.querySelector('.list-name');
+            let listClickTimeout = null;
+            
+            listItem.addEventListener('click', (e) => {
+                // 編集中の場合は何もしない
+                if (listNameElement.classList.contains('editing')) {
+                    return;
+                }
+                
+                // リスト名がクリックされた場合の処理
+                if (e.target === listNameElement) {
+                    // ダブルクリックを待つためのタイムアウト
+                    if (listClickTimeout) {
+                        clearTimeout(listClickTimeout);
+                        listClickTimeout = null;
+                        return; // ダブルクリックなので何もしない
+                    }
+                    
+                    listClickTimeout = setTimeout(() => {
+                        listClickTimeout = null;
+                        // シングルクリックの処理
+                        this.selectList(list.id);
+                        this.renderLists();
+                        this.renderTodos();
+                    }, 250);
+                } else {
+                    // リスト名以外がクリックされた場合は即座に切り替え
+                    this.selectList(list.id);
+                    this.renderLists();
+                    this.renderTodos();
+                }
             });
+
+            // リスト名をダブルクリックで編集（デフォルトリスト以外）
+            if (list.id !== 'default') {
+                listNameElement.addEventListener('dblclick', (e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    
+                    // シングルクリックのタイムアウトをクリア
+                    if (listClickTimeout) {
+                        clearTimeout(listClickTimeout);
+                        listClickTimeout = null;
+                    }
+                    
+                    this.startEditingList(list.id, listNameElement);
+                });
+            }
 
             if (list.id !== 'default') {
                 listItem.addEventListener('contextmenu', (e) => {
@@ -390,10 +453,42 @@ class TodoApp {
             }
 
             if (text) {
-                text.addEventListener('click', () => {
-                    this.toggleTodo(todo.id);
-                    this.renderTodos();
-                    this.renderLists();
+                let clickTimeout = null;
+                
+                text.addEventListener('click', (e) => {
+                    // 編集中の場合は何もしない
+                    if (text.classList.contains('editing')) {
+                        return;
+                    }
+                    
+                    // ダブルクリックを待つためのタイムアウト
+                    if (clickTimeout) {
+                        clearTimeout(clickTimeout);
+                        clickTimeout = null;
+                        return; // ダブルクリックなので何もしない
+                    }
+                    
+                    clickTimeout = setTimeout(() => {
+                        clickTimeout = null;
+                        // シングルクリックの処理
+                        this.toggleTodo(todo.id);
+                        this.renderTodos();
+                        this.renderLists();
+                    }, 250); // 250ms後に実行（ダブルクリック検出時間）
+                });
+
+                // ダブルクリックで編集モード
+                text.addEventListener('dblclick', (e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    
+                    // シングルクリックのタイムアウトをクリア
+                    if (clickTimeout) {
+                        clearTimeout(clickTimeout);
+                        clickTimeout = null;
+                    }
+                    
+                    this.startEditingTodo(todo.id, text);
                 });
             }
 
@@ -410,6 +505,123 @@ class TodoApp {
 
             todosContainer.appendChild(todoItem);
         });
+    }
+
+    // TODO編集機能
+    startEditingTodo(todoId, textElement) {
+        if (typeof document === 'undefined') return;
+
+        const todo = this.todos.find(t => t.id === todoId);
+        if (!todo) return;
+
+        const originalText = todo.text;
+        
+        // 編集用input要素を作成
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'edit-input';
+        input.value = originalText;
+        
+        // 編集モードにする
+        textElement.classList.add('editing');
+        textElement.innerHTML = '';
+        textElement.appendChild(input);
+        
+        // フォーカスして全選択
+        input.focus();
+        input.select();
+        
+        // 保存・キャンセル処理
+        const saveEdit = () => {
+            const newText = input.value.trim();
+            if (newText && newText !== originalText) {
+                this.updateTodo(todoId, newText);
+            }
+            this.endEditingTodo(textElement, todo.text);
+            this.renderTodos();
+            this.renderLists();
+        };
+
+        const cancelEdit = () => {
+            this.endEditingTodo(textElement, originalText);
+        };
+
+        // イベントリスナー
+        input.addEventListener('blur', saveEdit);
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                saveEdit();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                cancelEdit();
+            }
+        });
+    }
+
+    endEditingTodo(textElement, text) {
+        if (typeof document === 'undefined' || !textElement) return;
+        
+        textElement.classList.remove('editing');
+        textElement.innerHTML = text;
+    }
+
+    // リスト名編集機能
+    startEditingList(listId, nameElement) {
+        if (typeof document === 'undefined') return;
+
+        const list = this.lists.find(l => l.id === listId);
+        if (!list || listId === 'default') return;
+
+        const originalName = list.name;
+        
+        // 編集用input要素を作成
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'edit-input';
+        input.value = originalName;
+        
+        // 編集モードにする
+        nameElement.classList.add('editing');
+        nameElement.innerHTML = '';
+        nameElement.appendChild(input);
+        
+        // フォーカスして全選択
+        input.focus();
+        input.select();
+        
+        // 保存・キャンセル処理
+        const saveEdit = () => {
+            const newName = input.value.trim();
+            if (newName && newName !== originalName) {
+                this.updateList(listId, newName);
+            }
+            this.endEditingList(nameElement, list.name);
+            this.renderLists();
+        };
+
+        const cancelEdit = () => {
+            this.endEditingList(nameElement, originalName);
+        };
+
+        // イベントリスナー
+        input.addEventListener('blur', saveEdit);
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                saveEdit();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                cancelEdit();
+            }
+        });
+    }
+
+    endEditingList(nameElement, name) {
+        if (typeof document === 'undefined' || !nameElement) return;
+        
+        nameElement.classList.remove('editing');
+        nameElement.innerHTML = name;
     }
 
     // サイドバーリサイザー機能
