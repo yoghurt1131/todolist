@@ -159,6 +159,17 @@ body {
     background-color: rgba(255, 255, 255, 0.3);
 }
 
+.list-item.drop-target {
+    background-color: #e8f5e8;
+    border: 2px dashed #4caf50;
+    transform: scale(1.02);
+}
+
+.list-item.drop-target.active {
+    background-color: #c8e6c9;
+    border-color: #2e7d32;
+}
+
 .sidebar-footer {
     padding: 16px;
     border-top: 1px solid #e5e5e5;
@@ -292,6 +303,43 @@ body {
 .todo-item.completed .todo-text {
     text-decoration: line-through;
     color: #999;
+}
+
+.todo-item.selected {
+    background-color: #e3f2fd;
+    border-radius: 6px;
+    border-left: 3px solid #007aff;
+}
+
+.todo-item.dragging {
+    opacity: 0.5;
+    transform: rotate(2deg);
+    cursor: grabbing;
+}
+
+.todo-item[draggable="true"] {
+    cursor: grab;
+}
+
+.todo-item.dragging-group {
+    opacity: 0.7;
+    background-color: #f0f8ff;
+    border-left: 3px solid #007aff;
+    transform: translateX(2px);
+}
+
+.todo-item.range-preview {
+    background-color: #e3f2fd;
+    border-radius: 6px;
+    border-left: 2px dashed #007aff;
+    transition: all 0.15s ease;
+}
+
+.todo-item.copy-feedback {
+    background-color: #4caf50;
+    color: white;
+    transform: scale(1.02);
+    transition: all 0.2s ease;
 }
 
 .todo-actions {
@@ -450,6 +498,54 @@ body {
 
 .todo-text.editing {
     padding: 0;
+}
+
+/* コンテキストメニュー */
+.context-menu {
+    position: fixed;
+    z-index: 2000;
+    background: white;
+    border: 1px solid #d1d1d1;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    min-width: 180px;
+    max-width: 250px;
+}
+
+.context-menu-content {
+    padding: 8px 0;
+}
+
+.context-menu-header {
+    padding: 8px 16px;
+    font-size: 12px;
+    color: #666;
+    border-bottom: 1px solid #e5e5e5;
+    margin-bottom: 4px;
+}
+
+.context-menu-item {
+    padding: 8px 16px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #333;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: background-color 0.15s ease;
+}
+
+.context-menu-item:hover {
+    background-color: #f0f0f0;
+}
+
+.context-menu-item.current {
+    color: #999;
+    cursor: not-allowed;
+}
+
+.context-menu-item.current:hover {
+    background-color: transparent;
 }
 
 /* ユーティリティ */

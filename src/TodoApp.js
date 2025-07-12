@@ -7,6 +7,9 @@ class TodoApp {
         this.lists = [];
         this.todos = [];
         this.currentListId = 'default';
+        this.selectedTodoIds = new Set();
+        this.lastSelectedTodoId = null;
+        this.clipboardTodos = []; // コピーされたTODOのデータ
         this.dataPath = dataPath || (app ? path.join(app.getPath('userData'), 'tododata.json') : './tododata.json');
         this.eventListeners = {};
     }
@@ -153,6 +156,7 @@ class TodoApp {
         const listExists = this.lists.find(l => l.id === listId);
         if (listExists) {
             this.currentListId = listId;
+            this.clearSelection(); // リスト切り替え時に選択をクリア
             return true;
         }
         return false;
@@ -168,6 +172,90 @@ class TodoApp {
     getIncompleteTodosCount(listId) {
         const todos = this.getTodosForList(listId);
         return todos.filter(todo => !todo.completed).length;
+    }
+
+    // TODO選択機能
+    selectTodo(todoId, isMultiSelect = false, isRangeSelect = false) {
+        if (isRangeSelect && this.lastSelectedTodoId) {
+            // 範囲選択
+            this.selectTodoRange(this.lastSelectedTodoId, todoId);
+        } else if (isMultiSelect) {
+            // 個別選択（Cmd/Ctrl）
+            if (this.selectedTodoIds.has(todoId)) {
+                this.selectedTodoIds.delete(todoId);
+                // 削除した場合、lastSelectedTodoIdをクリア
+                if (this.lastSelectedTodoId === todoId) {
+                    this.lastSelectedTodoId = null;
+                }
+            } else {
+                this.selectedTodoIds.add(todoId);
+                this.lastSelectedTodoId = todoId;
+            }
+        } else {
+            // 単一選択
+            this.selectedTodoIds.clear();
+            this.selectedTodoIds.add(todoId);
+            this.lastSelectedTodoId = todoId;
+        }
+    }
+
+    // 範囲選択機能
+    selectTodoRange(startTodoId, endTodoId) {
+        const currentTodos = this.getTodosForList(this.currentListId);
+        
+        // 表示順序でソート（完了状態と作成日時で）
+        const sortedTodos = [...currentTodos].sort((a, b) => {
+            if (a.completed !== b.completed) {
+                return a.completed ? 1 : -1;
+            }
+            return new Date(b.createdAt) - new Date(a.createdAt);
+        });
+        
+        const startIndex = sortedTodos.findIndex(todo => todo.id === startTodoId);
+        const endIndex = sortedTodos.findIndex(todo => todo.id === endTodoId);
+        
+        if (startIndex === -1 || endIndex === -1) return;
+        
+        const minIndex = Math.min(startIndex, endIndex);
+        const maxIndex = Math.max(startIndex, endIndex);
+        
+        // 範囲内のすべてのTODOを選択
+        for (let i = minIndex; i <= maxIndex; i++) {
+            this.selectedTodoIds.add(sortedTodos[i].id);
+        }
+        
+        this.lastSelectedTodoId = endTodoId;
+    }
+
+    clearSelection() {
+        this.selectedTodoIds.clear();
+        this.lastSelectedTodoId = null;
+    }
+
+    isSelected(todoId) {
+        return this.selectedTodoIds.has(todoId);
+    }
+
+    // TODOを他のリストに移動
+    moveTodosToList(todoIds, targetListId) {
+        if (targetListId === 'default') {
+            targetListId = null; // デフォルトリストはnull
+        }
+
+        let moved = false;
+        todoIds.forEach(todoId => {
+            const todo = this.todos.find(t => t.id === todoId);
+            if (todo) {
+                todo.listId = targetListId;
+                moved = true;
+            }
+        });
+
+        if (moved) {
+            this.saveData();
+            this.clearSelection();
+        }
+        return moved;
     }
 
     // DOM manipulation methods (only available in browser environment)
@@ -391,6 +479,36 @@ class TodoApp {
                 });
             }
 
+            // ドロップゾーンとしての機能
+            listItem.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                listItem.classList.add('drop-target');
+            });
+
+            listItem.addEventListener('dragleave', (e) => {
+                // 子要素に移動した場合は除外
+                if (!listItem.contains(e.relatedTarget)) {
+                    listItem.classList.remove('drop-target');
+                }
+            });
+
+            listItem.addEventListener('drop', (e) => {
+                e.preventDefault();
+                listItem.classList.remove('drop-target');
+                
+                try {
+                    const draggedTodoIds = JSON.parse(e.dataTransfer.getData('text/plain'));
+                    if (draggedTodoIds && draggedTodoIds.length > 0) {
+                        this.moveTodosToList(draggedTodoIds, list.id);
+                        this.renderTodos();
+                        this.renderLists();
+                    }
+                } catch (error) {
+                    console.error('ドロップデータの解析に失敗:', error);
+                }
+            });
+
             listsContainer.appendChild(listItem);
         });
     }
@@ -430,7 +548,10 @@ class TodoApp {
 
         todos.forEach(todo => {
             const todoItem = document.createElement('div');
-            todoItem.className = `todo-item ${todo.completed ? 'completed' : ''}`;
+            const isSelected = this.isSelected(todo.id);
+            todoItem.className = `todo-item ${todo.completed ? 'completed' : ''} ${isSelected ? 'selected' : ''}`;
+            todoItem.draggable = true;
+            todoItem.dataset.todoId = todo.id;
             
             todoItem.innerHTML = `
                 <div class="todo-checkbox ${todo.completed ? 'completed' : ''}" data-todo-id="${todo.id}"></div>
@@ -453,28 +574,30 @@ class TodoApp {
             }
 
             if (text) {
-                let clickTimeout = null;
-                
+                // シングルクリックで選択
                 text.addEventListener('click', (e) => {
                     // 編集中の場合は何もしない
                     if (text.classList.contains('editing')) {
                         return;
                     }
                     
-                    // ダブルクリックを待つためのタイムアウト
-                    if (clickTimeout) {
-                        clearTimeout(clickTimeout);
-                        clickTimeout = null;
-                        return; // ダブルクリックなので何もしない
-                    }
+                    e.stopPropagation();
+                    const isMultiSelect = e.metaKey || e.ctrlKey;
+                    const isRangeSelect = e.shiftKey;
                     
-                    clickTimeout = setTimeout(() => {
-                        clickTimeout = null;
-                        // シングルクリックの処理
-                        this.toggleTodo(todo.id);
-                        this.renderTodos();
-                        this.renderLists();
-                    }, 250); // 250ms後に実行（ダブルクリック検出時間）
+                    this.selectTodo(todo.id, isMultiSelect, isRangeSelect);
+                    this.renderTodos();
+                });
+
+                // Shift+マウスオーバーで範囲選択プレビュー
+                text.addEventListener('mouseenter', (e) => {
+                    if (e.shiftKey && this.lastSelectedTodoId && this.lastSelectedTodoId !== todo.id) {
+                        this.showRangePreview(this.lastSelectedTodoId, todo.id);
+                    }
+                });
+
+                text.addEventListener('mouseleave', (e) => {
+                    this.hideRangePreview();
                 });
 
                 // ダブルクリックで編集モード
@@ -482,13 +605,21 @@ class TodoApp {
                     e.stopPropagation();
                     e.preventDefault();
                     
-                    // シングルクリックのタイムアウトをクリア
-                    if (clickTimeout) {
-                        clearTimeout(clickTimeout);
-                        clickTimeout = null;
+                    this.startEditingTodo(todo.id, text);
+                });
+
+                // 右クリックでコンテキストメニュー
+                text.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    // TODOが選択されていない場合は選択する
+                    if (!this.isSelected(todo.id)) {
+                        this.selectTodo(todo.id, false);
+                        this.renderTodos();
                     }
                     
-                    this.startEditingTodo(todo.id, text);
+                    this.showContextMenu(e.clientX, e.clientY);
                 });
             }
 
@@ -502,6 +633,52 @@ class TodoApp {
                     }
                 });
             }
+
+            // ドラッグアンドドロップイベント
+            todoItem.addEventListener('dragstart', (e) => {
+                e.dataTransfer.effectAllowed = 'move';
+                
+                // ドラッグ中のTODOを特定
+                let draggedTodoIds;
+                if (this.isSelected(todo.id)) {
+                    // 選択されている場合は、選択されたすべてのTODOをドラッグ
+                    draggedTodoIds = Array.from(this.selectedTodoIds);
+                } else {
+                    // 選択されていない場合は、このTODOのみをドラッグ
+                    draggedTodoIds = [todo.id];
+                }
+                
+                e.dataTransfer.setData('text/plain', JSON.stringify(draggedTodoIds));
+                
+                // ドラッグ中の視覚的フィードバック
+                todoItem.classList.add('dragging');
+                
+                // 複数選択されている場合は、すべての選択アイテムに視覚効果を適用
+                if (this.isSelected(todo.id) && this.selectedTodoIds.size > 1) {
+                    const allTodoItems = document.querySelectorAll('.todo-item');
+                    allTodoItems.forEach(item => {
+                        const itemTodoId = item.dataset.todoId;
+                        if (this.selectedTodoIds.has(itemTodoId)) {
+                            item.classList.add('dragging-group');
+                        }
+                    });
+                }
+                
+                setTimeout(() => {
+                    todoItem.style.opacity = '0.5';
+                }, 0);
+            });
+
+            todoItem.addEventListener('dragend', (e) => {
+                todoItem.classList.remove('dragging');
+                todoItem.style.opacity = '';
+                
+                // 複数選択の視覚効果をクリア
+                const allTodoItems = document.querySelectorAll('.todo-item');
+                allTodoItems.forEach(item => {
+                    item.classList.remove('dragging-group');
+                });
+            });
 
             todosContainer.appendChild(todoItem);
         });
@@ -689,6 +866,263 @@ class TodoApp {
         resizer.addEventListener('dblclick', () => {
             sidebar.style.width = '250px';
             localStorage.setItem('sidebarWidth', 250);
+        });
+
+        // コンテキストメニューを閉じる
+        document.addEventListener('click', () => {
+            this.hideContextMenu();
+        });
+
+        document.addEventListener('contextmenu', (e) => {
+            // TODO以外の場所での右クリックはコンテキストメニューを閉じる
+            if (!e.target.closest('.todo-text')) {
+                this.hideContextMenu();
+            }
+        });
+
+        // キーボードイベントでShiftキーの状態を監視
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'Shift') {
+                this.hideRangePreview();
+            }
+        });
+
+        // キーボードショートカット
+        document.addEventListener('keydown', (e) => {
+            // 入力フィールドにフォーカスがある場合は無視
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                return;
+            }
+
+            const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+            const cmdKey = isMac ? e.metaKey : e.ctrlKey;
+
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                // Delete/Backspaceキーで選択されたTODOを削除
+                e.preventDefault();
+                this.deleteSelectedTodos();
+            } else if (cmdKey && e.key === 'c') {
+                // Command+C / Ctrl+C でコピー
+                e.preventDefault();
+                this.copySelectedTodos();
+            } else if (cmdKey && e.key === 'v') {
+                // Command+V / Ctrl+V でペースト
+                e.preventDefault();
+                this.pasteClipboardTodos();
+            }
+        });
+    }
+
+    // コンテキストメニュー関連メソッド
+    showContextMenu(x, y) {
+        if (typeof document === 'undefined') return;
+        
+        const contextMenu = document.getElementById('todoContextMenu');
+        const selectedTodoCount = document.getElementById('selectedTodoCount');
+        const contextMenuLists = document.getElementById('contextMenuLists');
+        
+        if (!contextMenu || !selectedTodoCount || !contextMenuLists) return;
+        
+        // 選択されたTODO数を更新
+        selectedTodoCount.textContent = this.selectedTodoIds.size;
+        
+        // リスト一覧を生成
+        contextMenuLists.innerHTML = '';
+        
+        this.lists.forEach(list => {
+            const item = document.createElement('div');
+            item.className = 'context-menu-item';
+            
+            // 現在のリストかどうかチェック
+            const selectedTodos = Array.from(this.selectedTodoIds).map(id => 
+                this.todos.find(t => t.id === id)
+            ).filter(Boolean);
+            
+            const isCurrentList = selectedTodos.every(todo => {
+                const todoListId = todo.listId || 'default';
+                return todoListId === list.id;
+            });
+            
+            if (isCurrentList) {
+                item.classList.add('current');
+                item.innerHTML = `
+                    <span>📍</span>
+                    <span>${list.name} (現在のリスト)</span>
+                `;
+            } else {
+                item.innerHTML = `
+                    <span>📂</span>
+                    <span>${list.name}</span>
+                `;
+                
+                item.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.moveTodosToList(Array.from(this.selectedTodoIds), list.id);
+                    this.renderTodos();
+                    this.renderLists();
+                    this.hideContextMenu();
+                });
+            }
+            
+            contextMenuLists.appendChild(item);
+        });
+        
+        // メニューを表示
+        contextMenu.classList.remove('hidden');
+        
+        // 位置を調整
+        contextMenu.style.left = x + 'px';
+        contextMenu.style.top = y + 'px';
+        
+        // 画面からはみ出る場合の調整
+        const rect = contextMenu.getBoundingClientRect();
+        const windowWidth = window.innerWidth;
+        const windowHeight = window.innerHeight;
+        
+        if (rect.right > windowWidth) {
+            contextMenu.style.left = (x - rect.width) + 'px';
+        }
+        
+        if (rect.bottom > windowHeight) {
+            contextMenu.style.top = (y - rect.height) + 'px';
+        }
+    }
+
+    hideContextMenu() {
+        if (typeof document === 'undefined') return;
+        
+        const contextMenu = document.getElementById('todoContextMenu');
+        if (contextMenu) {
+            contextMenu.classList.add('hidden');
+        }
+    }
+
+    // 範囲選択プレビュー機能
+    showRangePreview(startTodoId, endTodoId) {
+        if (typeof document === 'undefined') return;
+        
+        this.hideRangePreview(); // 既存のプレビューをクリア
+        
+        const currentTodos = this.getTodosForList(this.currentListId);
+        const sortedTodos = [...currentTodos].sort((a, b) => {
+            if (a.completed !== b.completed) {
+                return a.completed ? 1 : -1;
+            }
+            return new Date(b.createdAt) - new Date(a.createdAt);
+        });
+        
+        const startIndex = sortedTodos.findIndex(todo => todo.id === startTodoId);
+        const endIndex = sortedTodos.findIndex(todo => todo.id === endTodoId);
+        
+        if (startIndex === -1 || endIndex === -1) return;
+        
+        const minIndex = Math.min(startIndex, endIndex);
+        const maxIndex = Math.max(startIndex, endIndex);
+        
+        // 範囲内のTODO項目にプレビュークラスを追加
+        const allTodoItems = document.querySelectorAll('.todo-item');
+        for (let i = minIndex; i <= maxIndex; i++) {
+            const todoId = sortedTodos[i].id;
+            const todoElement = Array.from(allTodoItems).find(item => 
+                item.dataset.todoId === todoId
+            );
+            if (todoElement) {
+                todoElement.classList.add('range-preview');
+            }
+        }
+    }
+
+    hideRangePreview() {
+        if (typeof document === 'undefined') return;
+        
+        const previewItems = document.querySelectorAll('.range-preview');
+        previewItems.forEach(item => {
+            item.classList.remove('range-preview');
+        });
+    }
+
+    // キーボードショートカット機能
+    deleteSelectedTodos() {
+        if (this.selectedTodoIds.size === 0) return;
+
+        const selectedCount = this.selectedTodoIds.size;
+        const message = selectedCount === 1 
+            ? '選択されたタスクを削除しますか？'
+            : `選択された${selectedCount}件のタスクを削除しますか？`;
+
+        if (confirm(message)) {
+            const deletedIds = Array.from(this.selectedTodoIds);
+            deletedIds.forEach(todoId => {
+                this.deleteTodo(todoId);
+            });
+            
+            this.clearSelection();
+            this.renderTodos();
+            this.renderLists();
+        }
+    }
+
+    copySelectedTodos() {
+        if (this.selectedTodoIds.size === 0) return;
+
+        // 選択されたTODOのデータを取得
+        this.clipboardTodos = Array.from(this.selectedTodoIds)
+            .map(todoId => this.todos.find(t => t.id === todoId))
+            .filter(Boolean)
+            .map(todo => ({
+                text: todo.text,
+                completed: todo.completed,
+                createdAt: todo.createdAt
+            }));
+
+        console.log(`${this.clipboardTodos.length}件のタスクをコピーしました`);
+        
+        // 視覚的フィードバック（短時間のフラッシュ効果）
+        this.showCopyFeedback();
+    }
+
+    pasteClipboardTodos() {
+        if (this.clipboardTodos.length === 0) return;
+
+        // クリップボードからTODOを貼り付け
+        const newTodos = this.clipboardTodos.map(todoData => {
+            const newTodo = {
+                id: this.generateId(),
+                text: todoData.text,
+                completed: todoData.completed,
+                listId: this.currentListId === 'default' ? null : this.currentListId,
+                createdAt: new Date().toISOString() // 新しい作成日時
+            };
+            
+            this.todos.push(newTodo);
+            return newTodo;
+        });
+
+        this.saveData();
+        
+        // 貼り付けたTODOを選択状態にする
+        this.clearSelection();
+        newTodos.forEach(todo => {
+            this.selectedTodoIds.add(todo.id);
+        });
+        this.lastSelectedTodoId = newTodos[newTodos.length - 1].id;
+
+        this.renderTodos();
+        this.renderLists();
+        
+        console.log(`${newTodos.length}件のタスクを貼り付けました`);
+    }
+
+    showCopyFeedback() {
+        if (typeof document === 'undefined') return;
+
+        // 選択されたアイテムに短時間のフラッシュ効果
+        const selectedItems = document.querySelectorAll('.todo-item.selected');
+        selectedItems.forEach(item => {
+            item.classList.add('copy-feedback');
+            setTimeout(() => {
+                item.classList.remove('copy-feedback');
+            }, 200);
         });
     }
 }
