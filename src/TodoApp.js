@@ -504,7 +504,13 @@ class TodoApp {
                         todo.id, 
                         'todo', 
                         todo.text,
-                        (todoId, newText) => this.updateTodo(todoId, newText),
+                        (todoId, newText) => {
+                            const success = this.updateTodo(todoId, newText);
+                            if (success) {
+                                this.renderTodos();
+                            }
+                            return success;
+                        },
                         (todoId) => this.renderTodos()
                     );
 
@@ -979,7 +985,13 @@ class TodoApp {
         return this.inlineEditor.startEditingList(
             listId,
             list.name,
-            (newName) => this.updateList(listId, newName),
+            (newName) => {
+                const success = this.updateList(listId, newName);
+                if (success) {
+                    this.renderSidebar();
+                }
+                return success;
+            },
             () => {}
         );
     }

@@ -151,7 +151,19 @@ class InlineEditor {
 
         // 編集完了コールバックを実行
         if (wasChanged && this.editingState.onComplete) {
-            this.editingState.onComplete(this.editingState.id, newText);
+            const result = this.editingState.onComplete(this.editingState.id, newText);
+            
+            // コールバックが成功した場合、DOM要素のテキストも即座に更新
+            if (result !== false) {
+                const { type, id } = this.editingState;
+                const selector = type === 'todo' 
+                    ? `[data-todo-id="${id}"] .todo-text`
+                    : `[data-list-id="${id}"] .list-name`;
+                const element = document.querySelector(selector);
+                if (element) {
+                    element.textContent = newText;
+                }
+            }
         }
 
         this._cleanupEditing();
