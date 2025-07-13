@@ -6,7 +6,10 @@ const mockContextMenu = {
         remove: jest.fn(),
         add: jest.fn()
     },
-    style: {},
+    style: {
+        left: '',
+        top: ''
+    },
     getBoundingClientRect: jest.fn(() => ({
         right: 200,
         bottom: 300,

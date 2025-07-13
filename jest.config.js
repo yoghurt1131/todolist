@@ -9,7 +9,7 @@ module.exports = {
     'renderer.js',
     '!node_modules/**'
   ],
-  moduleNameMapping: {
+  moduleNameMapper: {
     '^electron$': '<rootDir>/tests/__mocks__/electron.js'
   }
 };

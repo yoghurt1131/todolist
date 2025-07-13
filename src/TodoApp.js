@@ -953,6 +953,42 @@ class TodoApp {
         }, 2000);
     }
 
+    // Backward compatibility methods for inline editing
+    startEditingTodo(todoId, element) {
+        const todo = this.todos.find(t => t.id === todoId);
+        if (!todo || !element) return false;
+        
+        return this.inlineEditor.startEditingTodo(
+            todoId,
+            todo.text,
+            (newText) => this.updateTodo(todoId, newText),
+            () => {}
+        );
+    }
+
+    endEditingTodo(element, text) {
+        if (!element || !text) return false;
+        // This method is handled internally by InlineEditor
+        return true;
+    }
+
+    startEditingList(listId, element) {
+        const list = this.lists.find(l => l.id === listId);
+        if (!list || !element) return false;
+        
+        return this.inlineEditor.startEditingList(
+            listId,
+            list.name,
+            (newName) => this.updateList(listId, newName),
+            () => {}
+        );
+    }
+
+    endEditingList(element, text) {
+        if (!element || !text) return false;
+        // This method is handled internally by InlineEditor
+        return true;
+    }
 
 }
 
