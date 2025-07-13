@@ -3,20 +3,37 @@ const path = require('path');
 const { ipcRenderer } = require('electron');
 const DataManager = require('./DataManager');
 const UndoManager = require('./UndoManager');
+const SelectionManager = require('./SelectionManager');
+const InlineEditor = require('./InlineEditor');
+const ClipboardManager = require('./ClipboardManager');
+const ContextMenuManager = require('./ContextMenuManager');
+const TodoOperations = require('./TodoOperations');
+const ListOperations = require('./ListOperations');
 
 class TodoApp {
     constructor(dataPath = null) {
         this.lists = [];
         this.todos = [];
         this.currentListId = 'default';
-        this.selectedTodoIds = new Set();
-        this.lastSelectedTodoId = null;
-        this.clipboardTodos = []; // コピーされたTODOのデータ
         this.eventListeners = {};
 
         // モジュール化されたコンポーネント
         this.dataManager = new DataManager(dataPath);
         this.undoManager = new UndoManager(50);
+        this.selectionManager = new SelectionManager();
+        this.inlineEditor = new InlineEditor();
+        this.clipboardManager = new ClipboardManager();
+        this.contextMenuManager = new ContextMenuManager();
+        this.todoOperations = new TodoOperations(
+            () => this.generateId(),
+            (action) => this.addToUndoStack(action),
+            () => this.saveData()
+        );
+        this.listOperations = new ListOperations(
+            () => this.generateId(),
+            (action) => this.addToUndoStack(action),
+            () => this.saveData()
+        );
     }
 
     async initializeApp() {
@@ -52,160 +69,38 @@ class TodoApp {
     }
 
     addTodoFromText(text) {
-        if (!text || !text.trim()) return null;
-
-        const todo = {
-            id: this.generateId(),
-            text: text.trim(),
-            completed: false,
-            listId: this.currentListId === 'default' ? null : this.currentListId,
-            createdAt: new Date().toISOString()
-        };
-
-        this.todos.push(todo);
-
-        // Undo履歴に記録
-        this.addToUndoStack({
-            type: 'addTodo',
-            todoId: todo.id
-        });
-
-        this.saveData();
-        return todo;
+        return this.todoOperations.addTodoFromText(text, this.currentListId, this.todos);
     }
 
     toggleTodo(todoId) {
-        const todo = this.todos.find(t => t.id === todoId);
-        if (todo) {
-            const previousState = todo.completed;
-            todo.completed = !todo.completed;
-
-            // Undo履歴に記録
-            this.addToUndoStack({
-                type: 'toggleTodo',
-                todoId: todo.id,
-                previousState: previousState
-            });
-
-            this.saveData();
-            return todo;
-        }
-        return null;
+        return this.todoOperations.toggleTodo(todoId, this.todos);
     }
 
     updateTodo(todoId, newText) {
-        const todo = this.todos.find(t => t.id === todoId);
-        if (todo && newText && newText.trim()) {
-            const previousText = todo.text;
-            todo.text = newText.trim();
-
-            // Undo履歴に記録（テキストが変更された場合のみ）
-            if (previousText !== todo.text) {
-                this.addToUndoStack({
-                    type: 'editTodo',
-                    todoId: todoId,
-                    previousText: previousText
-                });
-            }
-
-            this.saveData();
-            return todo;
-        }
-        return null;
+        return this.todoOperations.updateTodo(todoId, newText, this.todos);
     }
 
     deleteTodo(todoId) {
-        const todoToDelete = this.todos.find(t => t.id === todoId);
-        if (!todoToDelete) return false;
-
-        // Undo履歴に記録（削除前のデータを保存）
-        this.addToUndoStack({
-            type: 'deleteTodo',
-            todoId: todoId,
-            todoData: { ...todoToDelete }
-        });
-
-        const initialLength = this.todos.length;
-        this.todos = this.todos.filter(t => t.id !== todoId);
-        const deleted = initialLength !== this.todos.length;
-        if (deleted) {
-            this.saveData();
-        }
-        return deleted;
+        return this.todoOperations.deleteTodo(todoId, this.todos);
     }
 
     addListFromName(name) {
-        if (!name || !name.trim()) return null;
-
-        const list = {
-            id: this.generateId(),
-            name: name.trim(),
-            createdAt: new Date().toISOString()
-        };
-
-        this.lists.push(list);
-
-        // Undo履歴に記録
-        this.addToUndoStack({
-            type: 'addList',
-            listId: list.id
-        });
-
-        this.saveData();
-        return list;
+        return this.listOperations.addListFromName(name, this.lists);
     }
 
     updateList(listId, newName) {
-        const list = this.lists.find(l => l.id === listId);
-        if (list && newName && newName.trim() && listId !== 'default') {
-            const previousName = list.name;
-            list.name = newName.trim();
-
-            // Undo履歴に記録
-            this.addToUndoStack({
-                type: 'editList',
-                listId: listId,
-                previousName: previousName
-            });
-
-            this.saveData();
-            return list;
-        }
-        return null;
+        return this.listOperations.updateList(listId, newName, this.lists);
     }
 
     deleteList(listId) {
-        if (listId === 'default') return false;
-
-        const listToDelete = this.lists.find(l => l.id === listId);
-        const todosToDelete = this.todos.filter(t => t.listId === listId);
-
-        if (!listToDelete) return false;
-
-        // Undo履歴に記録（削除前のデータを保存）
-        this.addToUndoStack({
-            type: 'deleteList',
-            listId: listId,
-            listData: { ...listToDelete },
-            deletedTodos: todosToDelete.map(todo => ({ ...todo }))
-        });
-
-        const initialListsLength = this.lists.length;
-        const initialTodosLength = this.todos.length;
-
-        this.lists = this.lists.filter(l => l.id !== listId);
-        this.todos = this.todos.filter(t => t.listId !== listId);
-
-        const deleted = initialListsLength !== this.lists.length;
-
-        if (this.currentListId === listId) {
+        const result = this.listOperations.deleteList(listId, this.lists, this.todos);
+        
+        // 削除されたリストが現在のリストの場合、デフォルトに戻す
+        if (result && this.currentListId === listId) {
             this.currentListId = 'default';
         }
-
-        if (deleted) {
-            this.saveData();
-        }
-        return deleted;
+        
+        return result;
     }
 
     selectList(listId) {
@@ -225,6 +120,10 @@ class TodoApp {
         return this.todos.filter(todo => todo.listId === listId);
     }
 
+    getTodosForCurrentList() {
+        return this.getTodosForList(this.currentListId);
+    }
+
     getIncompleteTodosCount(listId) {
         const todos = this.getTodosForList(listId);
         return todos.filter(todo => !todo.completed).length;
@@ -232,83 +131,36 @@ class TodoApp {
 
     // TODO選択機能
     selectTodo(todoId, isMultiSelect = false, isRangeSelect = false) {
-        if (isRangeSelect && this.lastSelectedTodoId) {
-            // 範囲選択
-            this.selectTodoRange(this.lastSelectedTodoId, todoId);
-        } else if (isMultiSelect) {
-            // 個別選択（Cmd/Ctrl）
-            if (this.selectedTodoIds.has(todoId)) {
-                this.selectedTodoIds.delete(todoId);
-                // 削除した場合、lastSelectedTodoIdをクリア
-                if (this.lastSelectedTodoId === todoId) {
-                    this.lastSelectedTodoId = null;
-                }
-            } else {
-                this.selectedTodoIds.add(todoId);
-                this.lastSelectedTodoId = todoId;
-            }
-        } else {
-            // 単一選択
-            this.selectedTodoIds.clear();
-            this.selectedTodoIds.add(todoId);
-            this.lastSelectedTodoId = todoId;
+        const result = this.selectionManager.selectTodo(todoId, isMultiSelect, isRangeSelect);
+        
+        if (result.type === 'range') {
+            const currentTodos = this.getTodosForCurrentList();
+            this.selectionManager.selectTodoRange(result.startId, result.endId, currentTodos);
         }
+        
+        this.renderTodos();
     }
 
     // 範囲選択機能
     selectTodoRange(startTodoId, endTodoId) {
-        const currentTodos = this.getTodosForList(this.currentListId);
-
-        // 表示順序でソート（完了状態と作成日時で）
-        const sortedTodos = [...currentTodos].sort((a, b) => {
-            if (a.completed !== b.completed) {
-                return a.completed ? 1 : -1;
-            }
-            return new Date(b.createdAt) - new Date(a.createdAt);
-        });
-
-        const startIndex = sortedTodos.findIndex(todo => todo.id === startTodoId);
-        const endIndex = sortedTodos.findIndex(todo => todo.id === endTodoId);
-
-        if (startIndex === -1 || endIndex === -1) return;
-
-        const minIndex = Math.min(startIndex, endIndex);
-        const maxIndex = Math.max(startIndex, endIndex);
-
-        // 範囲内のすべてのTODOを選択
-        for (let i = minIndex; i <= maxIndex; i++) {
-            this.selectedTodoIds.add(sortedTodos[i].id);
-        }
-
-        this.lastSelectedTodoId = endTodoId;
+        const currentTodos = this.getTodosForCurrentList();
+        this.selectionManager.selectTodoRange(startTodoId, endTodoId, currentTodos);
+        this.renderTodos();
     }
 
     clearSelection() {
-        this.selectedTodoIds.clear();
-        this.lastSelectedTodoId = null;
+        this.selectionManager.clearSelection();
+        this.renderTodos();
     }
 
     isSelected(todoId) {
-        return this.selectedTodoIds.has(todoId);
+        return this.selectionManager.isSelected(todoId);
     }
 
     // TODOを他のリストに移動
     moveTodosToList(todoIds, targetListId) {
-        if (targetListId === 'default') {
-            targetListId = null; // デフォルトリストはnull
-        }
-
-        let moved = false;
-        todoIds.forEach(todoId => {
-            const todo = this.todos.find(t => t.id === todoId);
-            if (todo) {
-                todo.listId = targetListId;
-                moved = true;
-            }
-        });
-
+        const moved = this.todoOperations.moveTodosToList(todoIds, targetListId, this.todos);
         if (moved) {
-            this.saveData();
             this.clearSelection();
         }
         return moved;
@@ -638,44 +490,42 @@ class TodoApp {
             }
 
             if (text) {
-                let clickTimeout = null;
-
                 // クリックイベント（シングル/ダブルクリックを区別）
                 text.addEventListener('click', (e) => {
                     // 編集中の場合は何もしない
-                    if (text.classList.contains('editing')) {
+                    if (this.inlineEditor.isEditingElement('todo', todo.id)) {
                         return;
                     }
 
                     e.stopPropagation();
 
-                    // ダブルクリック検出のためのタイムアウト処理
-                    if (clickTimeout) {
-                        // ダブルクリックが発生した場合
-                        clearTimeout(clickTimeout);
-                        clickTimeout = null;
-                        
-                        // ダブルクリックで編集モード
-                        e.preventDefault();
-                        this.startEditingTodo(todo.id, text);
-                        return;
+                    // InlineEditorでダブルクリック検出
+                    const isDoubleClick = this.inlineEditor.handleClick(
+                        todo.id, 
+                        'todo', 
+                        todo.text,
+                        (todoId, newText) => this.updateTodo(todoId, newText),
+                        (todoId) => this.renderTodos()
+                    );
+
+                    if (!isDoubleClick) {
+                        // シングルクリック処理
+                        setTimeout(() => {
+                            if (!this.inlineEditor.isCurrentlyEditing()) {
+                                const isMultiSelect = e.metaKey || e.ctrlKey;
+                                const isRangeSelect = e.shiftKey;
+                                this.selectTodo(todo.id, isMultiSelect, isRangeSelect);
+                                this.renderTodos();
+                            }
+                        }, 250);
                     }
-
-                    // シングルクリックの場合、少し待ってから処理
-                    clickTimeout = setTimeout(() => {
-                        clickTimeout = null;
-                        const isMultiSelect = e.metaKey || e.ctrlKey;
-                        const isRangeSelect = e.shiftKey;
-
-                        this.selectTodo(todo.id, isMultiSelect, isRangeSelect);
-                        this.renderTodos();
-                    }, 250);
                 });
 
                 // Shift+マウスオーバーで範囲選択プレビュー
                 text.addEventListener('mouseenter', (e) => {
-                    if (e.shiftKey && this.lastSelectedTodoId && this.lastSelectedTodoId !== todo.id) {
-                        this.showRangePreview(this.lastSelectedTodoId, todo.id);
+                    const lastSelectedId = this.selectionManager.getLastSelectedId();
+                    if (e.shiftKey && lastSelectedId && lastSelectedId !== todo.id) {
+                        this.showRangePreview(lastSelectedId, todo.id);
                     }
                 });
 
@@ -717,7 +567,7 @@ class TodoApp {
                 let draggedTodoIds;
                 if (this.isSelected(todo.id)) {
                     // 選択されている場合は、選択されたすべてのTODOをドラッグ
-                    draggedTodoIds = Array.from(this.selectedTodoIds);
+                    draggedTodoIds = this.selectionManager.getSelectedIds();
                 } else {
                     // 選択されていない場合は、このTODOのみをドラッグ
                     draggedTodoIds = [todo.id];
@@ -729,11 +579,11 @@ class TodoApp {
                 todoItem.classList.add('dragging');
 
                 // 複数選択されている場合は、すべての選択アイテムに視覚効果を適用
-                if (this.isSelected(todo.id) && this.selectedTodoIds.size > 1) {
+                if (this.isSelected(todo.id) && this.selectionManager.getSelectedCount() > 1) {
                     const allTodoItems = document.querySelectorAll('.todo-item');
                     allTodoItems.forEach(item => {
                         const itemTodoId = item.dataset.todoId;
-                        if (this.selectedTodoIds.has(itemTodoId)) {
+                        if (this.selectionManager.isSelected(itemTodoId)) {
                             item.classList.add('dragging-group');
                         }
                     });
@@ -759,141 +609,6 @@ class TodoApp {
         });
     }
 
-    // TODO編集機能
-    startEditingTodo(todoId, textElement) {
-        if (typeof document === 'undefined') return;
-
-        const todo = this.todos.find(t => t.id === todoId);
-        if (!todo) return;
-
-        // 現在の要素を再取得（DOM再構築に対応）
-        const currentTextElement = textElement || document.querySelector(`[data-todo-id="${todoId}"] .todo-text`);
-        if (!currentTextElement) {
-            console.warn('Text element not found for todo:', todoId);
-            return;
-        }
-
-        // 既に編集中の場合は何もしない
-        if (currentTextElement.classList.contains('editing')) {
-            return;
-        }
-
-        const originalText = todo.text;
-
-        // 編集用input要素を作成
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.className = 'edit-input';
-        input.value = originalText;
-
-        // 編集モードにする
-        currentTextElement.classList.add('editing');
-        currentTextElement.innerHTML = '';
-        currentTextElement.appendChild(input);
-
-        // フォーカスして全選択
-        input.focus();
-        input.select();
-
-        // 保存・キャンセル処理
-        const saveEdit = () => {
-            const newText = input.value.trim();
-            if (newText && newText !== originalText) {
-                // Undo履歴に追加
-                this.addToUndoStack({
-                    type: 'editTodo',
-                    todoId: todoId,
-                    previousText: originalText,
-                    newText: newText
-                });
-                this.updateTodo(todoId, newText);
-            }
-            this.endEditingTodo(currentTextElement, newText || originalText);
-            this.renderTodos();
-            this.renderLists();
-        };
-
-        const cancelEdit = () => {
-            this.endEditingTodo(currentTextElement, originalText);
-        };
-
-        // イベントリスナー
-        input.addEventListener('blur', saveEdit);
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                saveEdit();
-            } else if (e.key === 'Escape') {
-                e.preventDefault();
-                cancelEdit();
-            }
-        });
-    }
-
-    endEditingTodo(textElement, text) {
-        if (typeof document === 'undefined' || !textElement) return;
-
-        textElement.classList.remove('editing');
-        textElement.innerHTML = text;
-    }
-
-    // リスト名編集機能
-    startEditingList(listId, nameElement) {
-        if (typeof document === 'undefined') return;
-
-        const list = this.lists.find(l => l.id === listId);
-        if (!list || listId === 'default') return;
-
-        const originalName = list.name;
-
-        // 編集用input要素を作成
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.className = 'edit-input';
-        input.value = originalName;
-
-        // 編集モードにする
-        nameElement.classList.add('editing');
-        nameElement.innerHTML = '';
-        nameElement.appendChild(input);
-
-        // フォーカスして全選択
-        input.focus();
-        input.select();
-
-        // 保存・キャンセル処理
-        const saveEdit = () => {
-            const newName = input.value.trim();
-            if (newName && newName !== originalName) {
-                this.updateList(listId, newName);
-            }
-            this.endEditingList(nameElement, list.name);
-            this.renderLists();
-        };
-
-        const cancelEdit = () => {
-            this.endEditingList(nameElement, originalName);
-        };
-
-        // イベントリスナー
-        input.addEventListener('blur', saveEdit);
-        input.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                saveEdit();
-            } else if (e.key === 'Escape') {
-                e.preventDefault();
-                cancelEdit();
-            }
-        });
-    }
-
-    endEditingList(nameElement, name) {
-        if (typeof document === 'undefined' || !nameElement) return;
-
-        nameElement.classList.remove('editing');
-        nameElement.innerHTML = name;
-    }
 
     // サイドバーリサイザー機能
     initializeSidebar() {
@@ -1013,86 +728,21 @@ class TodoApp {
 
     // コンテキストメニュー関連メソッド
     showContextMenu(x, y) {
-        if (typeof document === 'undefined') return;
-
-        const contextMenu = document.getElementById('todoContextMenu');
-        const selectedTodoCount = document.getElementById('selectedTodoCount');
-        const contextMenuLists = document.getElementById('contextMenuLists');
-
-        if (!contextMenu || !selectedTodoCount || !contextMenuLists) return;
-
-        // 選択されたTODO数を更新
-        selectedTodoCount.textContent = this.selectedTodoIds.size;
-
-        // リスト一覧を生成
-        contextMenuLists.innerHTML = '';
-
-        this.lists.forEach(list => {
-            const item = document.createElement('div');
-            item.className = 'context-menu-item';
-
-            // 現在のリストかどうかチェック
-            const selectedTodos = Array.from(this.selectedTodoIds).map(id =>
-                this.todos.find(t => t.id === id)
-            ).filter(Boolean);
-
-            const isCurrentList = selectedTodos.every(todo => {
-                const todoListId = todo.listId || 'default';
-                return todoListId === list.id;
-            });
-
-            if (isCurrentList) {
-                item.classList.add('current');
-                item.innerHTML = `
-                    <span>📍</span>
-                    <span>${list.name} (現在のリスト)</span>
-                `;
-            } else {
-                item.innerHTML = `
-                    <span>📂</span>
-                    <span>${list.name}</span>
-                `;
-
-                item.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    this.moveTodosToList(Array.from(this.selectedTodoIds), list.id);
-                    this.renderTodos();
-                    this.renderLists();
-                    this.hideContextMenu();
-                });
+        this.contextMenuManager.showContextMenu(
+            x, y, 
+            this.selectionManager.getSelectedIds(),
+            this.todos,
+            this.lists,
+            (todoIds, listId) => {
+                this.moveTodosToList(todoIds, listId);
+                this.renderTodos();
+                this.renderLists();
             }
-
-            contextMenuLists.appendChild(item);
-        });
-
-        // メニューを表示
-        contextMenu.classList.remove('hidden');
-
-        // 位置を調整
-        contextMenu.style.left = x + 'px';
-        contextMenu.style.top = y + 'px';
-
-        // 画面からはみ出る場合の調整
-        const rect = contextMenu.getBoundingClientRect();
-        const windowWidth = window.innerWidth;
-        const windowHeight = window.innerHeight;
-
-        if (rect.right > windowWidth) {
-            contextMenu.style.left = (x - rect.width) + 'px';
-        }
-
-        if (rect.bottom > windowHeight) {
-            contextMenu.style.top = (y - rect.height) + 'px';
-        }
+        );
     }
 
     hideContextMenu() {
-        if (typeof document === 'undefined') return;
-
-        const contextMenu = document.getElementById('todoContextMenu');
-        if (contextMenu) {
-            contextMenu.classList.add('hidden');
-        }
+        this.contextMenuManager.hideContextMenu();
     }
 
     // 範囲選択プレビュー機能
@@ -1141,86 +791,47 @@ class TodoApp {
 
     // キーボードショートカット機能
     deleteSelectedTodos() {
-        if (this.selectedTodoIds.size === 0) return;
+        const selectedIds = this.selectionManager.getSelectedIds();
+        if (selectedIds.length === 0) return;
 
-        const selectedCount = this.selectedTodoIds.size;
-        const message = selectedCount === 1
+        const message = selectedIds.length === 1
             ? '選択されたタスクを削除しますか？'
-            : `選択された${selectedCount}件のタスクを削除しますか？`;
+            : `選択された${selectedIds.length}件のタスクを削除しますか？`;
 
         if (confirm(message)) {
-            const deletedIds = Array.from(this.selectedTodoIds);
-            deletedIds.forEach(todoId => {
-                this.deleteTodo(todoId);
-            });
-
-            this.clearSelection();
-            this.renderTodos();
-            this.renderLists();
+            const deletedCount = this.todoOperations.deleteMultipleTodos(selectedIds, this.todos);
+            
+            if (deletedCount > 0) {
+                this.clearSelection();
+                this.renderTodos();
+                this.renderLists();
+            }
         }
     }
 
     copySelectedTodos() {
-        if (this.selectedTodoIds.size === 0) return;
-
-        // 選択されたTODOのデータを取得
-        this.clipboardTodos = Array.from(this.selectedTodoIds)
-            .map(todoId => this.todos.find(t => t.id === todoId))
-            .filter(Boolean)
-            .map(todo => ({
-                text: todo.text,
-                completed: todo.completed,
-                createdAt: todo.createdAt
-            }));
-
-        // システムクリップボードにも箇条書き形式でコピー
-        this.copyToSystemClipboard();
-
-        console.log(`${this.clipboardTodos.length}件のタスクをコピーしました`);
-
-        // コピー完了の視覚的フィードバック
-        this.showCopyNotification(this.clipboardTodos.length);
-    }
-
-    copyToSystemClipboard() {
-        if (typeof require === 'undefined' || this.clipboardTodos.length === 0) return;
-
-        try {
-            const { clipboard } = require('electron');
-
-            // 箇条書き形式でテキストを作成
-            const bulletText = this.clipboardTodos
-                .map(todo => {
-                    const bullet = todo.completed ? '- [x]' : '- [ ] ';
-                    return `${bullet} ${todo.text}`;
-                })
-                .join('\n');
-
-            // システムクリップボードに書き込み
-            clipboard.writeText(bulletText);
-        } catch (error) {
-            console.warn('システムクリップボードへのコピーに失敗:', error);
+        const selectedIds = this.selectionManager.getSelectedIds();
+        
+        const success = this.clipboardManager.copyTodos(
+            selectedIds, 
+            this.todos, 
+            (count) => this.showCopyNotification(count)
+        );
+        
+        if (success) {
+            this.clipboardManager.copyToSystemClipboard();
         }
     }
 
     pasteClipboardTodos() {
-        if (this.clipboardTodos.length === 0) return;
+        const newTodos = this.clipboardManager.pasteTodos(this.currentListId, () => this.generateId());
+        
+        if (newTodos.length === 0) return;
 
-        // クリップボードからTODOを貼り付け
-        const newTodos = this.clipboardTodos.map(todoData => {
-            const newTodo = {
-                id: this.generateId(),
-                text: todoData.text,
-                completed: todoData.completed,
-                listId: this.currentListId === 'default' ? null : this.currentListId,
-                createdAt: new Date().toISOString() // 新しい作成日時
-            };
+        // TodoAppの配列に追加
+        newTodos.forEach(todo => this.todos.push(todo));
 
-            this.todos.push(newTodo);
-            return newTodo;
-        });
-
-        // Undo履歴に記録（追加されたTODOのIDを保存）
+        // Undo履歴に記録
         this.addToUndoStack({
             type: 'pasteTodos',
             addedTodoIds: newTodos.map(todo => todo.id)
@@ -1229,11 +840,8 @@ class TodoApp {
         this.saveData();
 
         // 貼り付けたTODOを選択状態にする
-        this.clearSelection();
-        newTodos.forEach(todo => {
-            this.selectedTodoIds.add(todo.id);
-        });
-        this.lastSelectedTodoId = newTodos[newTodos.length - 1].id;
+        this.selectionManager.clearSelection();
+        this.selectionManager.setSelectedIds(newTodos.map(todo => todo.id));
 
         this.renderTodos();
         this.renderLists();
