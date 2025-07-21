@@ -1,4 +1,4 @@
-me: Claude PR Assistant
+name: Claude PR Assistant
 
 on:
   issue_comment:
