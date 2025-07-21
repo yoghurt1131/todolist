@@ -830,9 +830,18 @@ class TodoApp {
     }
 
     pasteClipboardTodos() {
-        const newTodos = this.clipboardManager.pasteTodos(this.currentListId, () => this.generateId());
+        // まず内部クリップボードからの貼り付けを試行
+        let newTodos = this.clipboardManager.pasteTodos(this.currentListId, () => this.generateId());
         
-        if (newTodos.length === 0) return;
+        // 内部クリップボードが空の場合、システムクリップボードから読み取り
+        if (newTodos.length === 0) {
+            newTodos = this.clipboardManager.pasteFromSystemClipboard(this.currentListId, () => this.generateId());
+        }
+
+        if (newTodos.length === 0) {
+            console.log('貼り付け可能なコンテンツがありません');
+            return;
+        }
 
         // TodoAppの配列に追加
         newTodos.forEach(todo => this.todos.push(todo));

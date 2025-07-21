@@ -254,6 +254,125 @@ class ClipboardManager {
     }
 
     /**
+     * システムクリップボードからテキストを読み取り、TODOリストとして解析
+     * @param {string} currentListId - 追加先のリストID
+     * @param {Function} generateId - ID生成関数
+     * @returns {Array} 解析されたTODOの配列、または空配列
+     */
+    pasteFromSystemClipboard(currentListId, generateId) {
+        if (typeof require === 'undefined') {
+            console.warn('Cannot read from system clipboard: not in Electron environment');
+            return [];
+        }
+
+        try {
+            const { clipboard } = require('electron');
+            const clipboardText = clipboard.readText();
+            
+            if (!clipboardText || clipboardText.trim() === '') {
+                console.log('システムクリップボードは空です');
+                return [];
+            }
+
+            console.log('システムクリップボードから読み取り:', clipboardText.substring(0, 100) + '...');
+            
+            // テキストを解析してTODOリストを作成
+            const todos = this.parseTextToTodos(clipboardText, currentListId, generateId);
+            
+            if (todos.length > 0) {
+                console.log(`システムクリップボードから${todos.length}件のタスクを作成しました`);
+            }
+            
+            return todos;
+        } catch (error) {
+            console.error('システムクリップボードの読み取りに失敗しました:', error);
+            return [];
+        }
+    }
+
+    /**
+     * テキストを解析してTODOリストに変換
+     * @param {string} text - 解析するテキスト
+     * @param {string} currentListId - 追加先のリストID
+     * @param {Function} generateId - ID生成関数
+     * @returns {Array} 解析されたTODOの配列
+     */
+    parseTextToTodos(text, currentListId, generateId) {
+        if (!text || text.trim() === '') {
+            return [];
+        }
+
+        const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+        const todos = [];
+
+        for (const line of lines) {
+            const todo = this.parseLineToTodo(line, currentListId, generateId);
+            if (todo) {
+                todos.push(todo);
+            }
+        }
+
+        return todos;
+    }
+
+    /**
+     * 1行のテキストをTODOに変換
+     * @param {string} line - 変換する行
+     * @param {string} currentListId - 追加先のリストID
+     * @param {Function} generateId - ID生成関数
+     * @returns {Object|null} 作成されたTODO、または null
+     */
+    parseLineToTodo(line, currentListId, generateId) {
+        if (!line || line.trim() === '') {
+            return null;
+        }
+
+        let text = line.trim();
+        let completed = false;
+
+        // マークダウン形式のチェックリストを検出
+        const markdownMatch = text.match(/^-\s*\[([ x])\]\s*(.+)$/i);
+        if (markdownMatch) {
+            completed = markdownMatch[1].toLowerCase() === 'x';
+            text = markdownMatch[2].trim();
+        }
+        // 番号付きリストを検出
+        else if (text.match(/^\d+\.\s*(.+)$/)) {
+            text = text.replace(/^\d+\.\s*/, '').trim();
+        }
+        // 箇条書きを検出
+        else if (text.match(/^[-*+]\s*(.+)$/)) {
+            text = text.replace(/^[-*+]\s*/, '').trim();
+        }
+        // ✓や○などのプレフィックスを検出
+        else if (text.match(/^[✓✔☑]\s*(.+)$/)) {
+            completed = true;
+            text = text.replace(/^[✓✔☑]\s*/, '').trim();
+        }
+        else if (text.match(/^[○◯]\s*(.+)$/)) {
+            text = text.replace(/^[○◯]\s*/, '').trim();
+        }
+
+        // 空のテキストは無視
+        if (!text || text.length === 0) {
+            return null;
+        }
+
+        // 最大文字数制限（適切なUI表示のため）
+        if (text.length > 1000) {
+            text = text.substring(0, 1000) + '...';
+        }
+
+        return {
+            id: generateId(),
+            text: text,
+            completed: false, // 外部から貼り付ける際は常に未完了状態
+            listId: currentListId === 'default' ? null : currentListId,
+            createdAt: new Date().toISOString()
+        };
+    }
+
+    /**
      * デバッグ用：クリップボードの内容を出力
      */
     debugPrintClipboard() {
