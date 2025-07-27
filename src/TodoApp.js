@@ -898,8 +898,13 @@ class TodoApp {
             return;
         }
 
-        // TodoAppの配列に追加
-        newTodos.forEach(todo => this.todos.push(todo));
+        // TodoAppの配列に追加してorder値を設定
+        newTodos.forEach(todo => {
+            if (todo.order === undefined) {
+                todo.order = this.todoOperations.getNextOrderValue(this.todos, this.currentListId);
+            }
+            this.todos.push(todo);
+        });
 
         // Undo履歴に記録
         this.addToUndoStack({
@@ -972,6 +977,14 @@ class TodoApp {
                 },
                 restoreMultipleTodos: (deletedTodos) => {
                     this.todos.push(...deletedTodos);
+                },
+                deleteMultipleTodosByIds: (todoIds) => {
+                    todoIds.forEach(todoId => {
+                        const index = this.todos.findIndex(t => t.id === todoId);
+                        if (index !== -1) {
+                            this.todos.splice(index, 1);
+                        }
+                    });
                 }
             },
             listOps: {

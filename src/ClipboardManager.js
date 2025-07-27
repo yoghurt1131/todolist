@@ -331,7 +331,7 @@ class ClipboardManager {
         let completed = false;
 
         // マークダウン形式のチェックリストを検出
-        const markdownMatch = text.match(/^-\s*\[([ x])\]\s*(.+)$/i);
+        const markdownMatch = text.match(/^-\s*\[([ xX])\]\s*(.+)$/);
         if (markdownMatch) {
             completed = markdownMatch[1].toLowerCase() === 'x';
             text = markdownMatch[2].trim();
@@ -340,9 +340,9 @@ class ClipboardManager {
         else if (text.match(/^\d+\.\s*(.+)$/)) {
             text = text.replace(/^\d+\.\s*/, '').trim();
         }
-        // 箇条書きを検出
-        else if (text.match(/^[-*+]\s*(.+)$/)) {
-            text = text.replace(/^[-*+]\s*/, '').trim();
+        // 箇条書きを検出（•記号も含む）
+        else if (text.match(/^[-*+•]\s*(.+)$/)) {
+            text = text.replace(/^[-*+•]\s*/, '').trim();
         }
         // ✓や○などのプレフィックスを検出
         else if (text.match(/^[✓✔☑]\s*(.+)$/)) {
@@ -368,7 +368,8 @@ class ClipboardManager {
             text: text,
             completed: false, // 外部から貼り付ける際は常に未完了状態
             listId: currentListId === 'default' ? null : currentListId,
-            createdAt: new Date().toISOString()
+            createdAt: new Date().toISOString(),
+            order: undefined // TodoAppでorder値を設定する
         };
     }
 

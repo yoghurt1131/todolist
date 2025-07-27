@@ -89,6 +89,10 @@ class UndoManager {
                     this._undoBatchDeleteTodos(action, operations.todoOps);
                     break;
 
+                case 'pasteTodos':
+                    this._undoPasteTodos(action, operations.todoOps);
+                    break;
+
                 default:
                     console.warn('Unknown action type for undo:', action.type);
                     // 未知のアクションタイプの場合、履歴に戻す
@@ -236,6 +240,15 @@ class UndoManager {
     _undoBatchDeleteTodos(action, todoOps) {
         if (action.deletedTodos && todoOps.restoreMultipleTodos) {
             todoOps.restoreMultipleTodos(action.deletedTodos);
+        }
+    }
+
+    /**
+     * 貼り付け操作の取り消し
+     */
+    _undoPasteTodos(action, todoOps) {
+        if (action.addedTodoIds && todoOps.deleteMultipleTodosByIds) {
+            todoOps.deleteMultipleTodosByIds(action.addedTodoIds);
         }
     }
 
