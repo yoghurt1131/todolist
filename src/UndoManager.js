@@ -77,6 +77,18 @@ class UndoManager {
                     this._undoMoveTodos(action, operations.todoOps);
                     break;
 
+                case 'reorderTodos':
+                    this._undoReorderTodos(action, operations.todoOps);
+                    break;
+
+                case 'updateTodoOrder':
+                    this._undoUpdateTodoOrder(action, operations.todoOps);
+                    break;
+
+                case 'batchDeleteTodos':
+                    this._undoBatchDeleteTodos(action, operations.todoOps);
+                    break;
+
                 default:
                     console.warn('Unknown action type for undo:', action.type);
                     // 未知のアクションタイプの場合、履歴に戻す
@@ -198,6 +210,33 @@ class UndoManager {
             return null;
         }
         return this.undoStack[this.undoStack.length - 1].type;
+    }
+
+    /**
+     * TODO並び替えの取り消し
+     */
+    _undoReorderTodos(action, todoOps) {
+        if (action.todoIds && action.originalOrders && todoOps.restoreTodoOrders) {
+            todoOps.restoreTodoOrders(action.todoIds, action.originalOrders);
+        }
+    }
+
+    /**
+     * TODO順序更新の取り消し
+     */
+    _undoUpdateTodoOrder(action, todoOps) {
+        if (action.todoId && action.originalOrder !== undefined && todoOps.updateTodoOrderById) {
+            todoOps.updateTodoOrderById(action.todoId, action.originalOrder);
+        }
+    }
+
+    /**
+     * バッチ削除の取り消し
+     */
+    _undoBatchDeleteTodos(action, todoOps) {
+        if (action.deletedTodos && todoOps.restoreMultipleTodos) {
+            todoOps.restoreMultipleTodos(action.deletedTodos);
+        }
     }
 
     /**

@@ -12,16 +12,17 @@ describe('TodoApp', () => {
         // Clear all mocks
         jest.clearAllMocks();
         fs.__clearMockFileData();
+        fs.writeFileSync.mockImplementation(() => {}); // デフォルトの実装をリセット
         
         mockDataPath = '/test/tododata.json';
         todoApp = new TodoApp(mockDataPath);
     });
 
     describe('Initialization', () => {
-        test('should initialize with default list when no data exists', () => {
+        test('should initialize with default list when no data exists', async () => {
             fs.existsSync.mockReturnValue(false);
             
-            todoApp.initializeApp();
+            await todoApp.initializeApp();
             
             expect(todoApp.lists).toHaveLength(1);
             expect(todoApp.lists[0].name).toBe('すべて');
@@ -30,21 +31,21 @@ describe('TodoApp', () => {
             expect(todoApp.currentListId).toBe('default');
         });
 
-        test('should load existing data when file exists', () => {
+        test('should load existing data when file exists', async () => {
             const mockData = {
                 lists: [
                     { id: 'default', name: 'すべて', createdAt: '2023-01-01T00:00:00.000Z' },
                     { id: 'work', name: '仕事', createdAt: '2023-01-02T00:00:00.000Z' }
                 ],
                 todos: [
-                    { id: 'todo1', text: 'テストタスク', completed: false, listId: 'work', createdAt: '2023-01-01T00:00:00.000Z' }
+                    { id: 'todo1', text: 'テストタスク', completed: false, listId: 'work', createdAt: '2023-01-01T00:00:00.000Z', order: 1000 }
                 ]
             };
 
             fs.existsSync.mockReturnValue(true);
             fs.readFileSync.mockReturnValue(JSON.stringify(mockData));
             
-            todoApp.initializeApp();
+            await todoApp.initializeApp();
             
             expect(todoApp.lists).toHaveLength(2);
             expect(todoApp.todos).toHaveLength(1);
@@ -52,11 +53,11 @@ describe('TodoApp', () => {
             expect(todoApp.todos[0].text).toBe('テストタスク');
         });
 
-        test('should handle corrupted data file gracefully', () => {
+        test('should handle corrupted data file gracefully', async () => {
             fs.existsSync.mockReturnValue(true);
             fs.readFileSync.mockReturnValue('invalid json');
             
-            todoApp.initializeApp();
+            await todoApp.initializeApp();
             
             expect(todoApp.lists).toHaveLength(1);
             expect(todoApp.lists[0].name).toBe('すべて');
@@ -86,13 +87,14 @@ describe('TodoApp', () => {
                 throw new Error('Write error');
             });
             
-            expect(() => todoApp.saveData()).not.toThrow();
+            expect(() => todoApp.saveData()).toThrow('Write error');
         });
     });
 
     describe('List Management', () => {
-        beforeEach(() => {
-            todoApp.initializeApp();
+        beforeEach(async () => {
+            fs.writeFileSync.mockClear();
+            await todoApp.initializeApp();
         });
 
         test('should add a new list', () => {
@@ -168,8 +170,9 @@ describe('TodoApp', () => {
     });
 
     describe('TODO Management', () => {
-        beforeEach(() => {
-            todoApp.initializeApp();
+        beforeEach(async () => {
+            fs.writeFileSync.mockClear();
+            await todoApp.initializeApp();
         });
 
         test('should add a new todo', () => {
@@ -234,8 +237,8 @@ describe('TodoApp', () => {
     });
 
     describe('Data Retrieval', () => {
-        beforeEach(() => {
-            todoApp.initializeApp();
+        beforeEach(async () => {
+            await todoApp.initializeApp();
             
             // Set up test data
             const workList = todoApp.addListFromName('仕事');

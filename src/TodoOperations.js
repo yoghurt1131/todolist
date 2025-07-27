@@ -27,7 +27,8 @@ class TodoOperations {
             text: text.trim(),
             completed: false,
             listId: currentListId === 'default' ? null : currentListId,
-            createdAt: new Date().toISOString()
+            createdAt: new Date().toISOString(),
+            order: this.getNextOrderValue(todos, currentListId)
         };
 
         todos.push(todo);
@@ -252,7 +253,8 @@ class TodoOperations {
             text: originalTodo.text + ' (コピー)',
             completed: false, // 複製時は常に未完了
             listId: originalTodo.listId,
-            createdAt: new Date().toISOString()
+            createdAt: new Date().toISOString(),
+            order: this.getNextOrderValue(todos, originalTodo.listId)
         };
 
         todos.push(duplicatedTodo);
@@ -376,10 +378,207 @@ class TodoOperations {
             errors.push('Todo createdAt must be a valid date string');
         }
 
+        if (todo.order !== undefined && typeof todo.order !== 'number') {
+            errors.push('Todo order must be a number if provided');
+        }
+
         return {
             isValid: errors.length === 0,
             errors
         };
+    }
+
+    /**
+     * 指定されたリスト内での次のorder値を取得
+     * @param {Array} todos - 全TODOリスト
+     * @param {string|null} listId - リストID
+     * @returns {number} 次のorder値
+     */
+    getNextOrderValue(todos, listId) {
+        const normalizedListId = listId === 'default' ? null : listId;
+        const listTodos = todos.filter(todo => todo.listId === normalizedListId);
+        
+        if (listTodos.length === 0) {
+            return 1000; // 初期値
+        }
+        
+        const maxOrder = Math.max(...listTodos.map(todo => todo.order || 0));
+        return maxOrder + 1000; // 1000刻みで増加
+    }
+
+    /**
+     * TODO項目の並び順を変更
+     * @param {Array<string>} todoIds - 新しい順序でのTODO IDの配列
+     * @param {string|null} listId - 対象リストID
+     * @param {Array} todos - 全TODOリスト（参照）
+     * @returns {boolean} 並び替えが成功したかどうか
+     */
+    reorderTodos(todoIds, listId, todos) {
+        if (!Array.isArray(todoIds) || todoIds.length === 0) {
+            return false;
+        }
+
+        const normalizedListId = listId === 'default' ? null : listId;
+        const originalOrders = {};
+        let reordered = false;
+
+        // 現在のorder値を保存（Undo用）
+        todoIds.forEach(todoId => {
+            const todo = todos.find(t => t.id === todoId);
+            if (todo && todo.listId === normalizedListId) {
+                originalOrders[todoId] = todo.order || 0;
+            }
+        });
+
+        // 新しいorder値を設定
+        todoIds.forEach((todoId, index) => {
+            const todo = todos.find(t => t.id === todoId);
+            if (todo && todo.listId === normalizedListId) {
+                const newOrder = (index + 1) * 1000;
+                if (todo.order !== newOrder) {
+                    todo.order = newOrder;
+                    reordered = true;
+                }
+            }
+        });
+
+        if (reordered) {
+            // Undo履歴に記録
+            this.addToUndoStack({
+                type: 'reorderTodos',
+                listId: normalizedListId,
+                todoIds: todoIds,
+                originalOrders: originalOrders
+            });
+
+            this.saveData();
+            console.log('TODOs reordered in list:', listId);
+        }
+
+        return reordered;
+    }
+
+    /**
+     * 単一TODO項目の並び順を更新
+     * @param {string} todoId - TODO ID
+     * @param {number} newOrder - 新しいorder値
+     * @param {Array} todos - 全TODOリスト（参照）
+     * @returns {boolean} 更新が成功したかどうか
+     */
+    updateTodoOrder(todoId, newOrder, todos) {
+        const todo = todos.find(t => t.id === todoId);
+        if (!todo) {
+            console.warn('Todo not found for order update:', todoId);
+            return false;
+        }
+
+        if (typeof newOrder !== 'number') {
+            console.warn('New order must be a number:', newOrder);
+            return false;
+        }
+
+        const originalOrder = todo.order || 0;
+        if (originalOrder === newOrder) {
+            return false; // 変更なし
+        }
+
+        todo.order = newOrder;
+
+        // Undo履歴に記録
+        this.addToUndoStack({
+            type: 'updateTodoOrder',
+            todoId: todoId,
+            originalOrder: originalOrder,
+            newOrder: newOrder
+        });
+
+        this.saveData();
+        console.log('TODO order updated:', todoId, 'from', originalOrder, 'to', newOrder);
+        return true;
+    }
+
+    /**
+     * 指定リスト内のTODOのorder値を正規化
+     * @param {Array} todos - 全TODOリスト（参照）
+     * @param {string|null} listId - 対象リストID
+     * @returns {boolean} 正規化が実行されたかどうか
+     */
+    normalizeTodoOrders(todos, listId) {
+        const normalizedListId = listId === 'default' ? null : listId;
+        const listTodos = todos.filter(todo => todo.listId === normalizedListId);
+        
+        if (listTodos.length === 0) {
+            return false;
+        }
+
+        // order値がないTODOには作成日時ベースでorder値を設定
+        listTodos.forEach(todo => {
+            if (todo.order === undefined || todo.order === null) {
+                todo.order = new Date(todo.createdAt).getTime();
+            }
+        });
+
+        // order値でソートして1000刻みで再割り当て
+        listTodos.sort((a, b) => (a.order || 0) - (b.order || 0));
+        
+        let normalized = false;
+        listTodos.forEach((todo, index) => {
+            const expectedOrder = (index + 1) * 1000;
+            if (todo.order !== expectedOrder) {
+                todo.order = expectedOrder;
+                normalized = true;
+            }
+        });
+
+        if (normalized) {
+            this.saveData();
+            console.log('TODO orders normalized for list:', listId);
+        }
+
+        return normalized;
+    }
+
+    /**
+     * TODOを指定位置に挿入
+     * @param {string} todoId - 移動するTODO ID
+     * @param {number} targetIndex - 挿入先のインデックス（0ベース）
+     * @param {string|null} listId - 対象リストID
+     * @param {Array} todos - 全TODOリスト（参照）
+     * @returns {boolean} 挿入が成功したかどうか
+     */
+    insertTodoAtPosition(todoId, targetIndex, listId, todos) {
+        const normalizedListId = listId === 'default' ? null : listId;
+        const todo = todos.find(t => t.id === todoId);
+        
+        if (!todo) {
+            console.warn('Todo not found for position insert:', todoId);
+            return false;
+        }
+
+        if (todo.listId !== normalizedListId) {
+            console.warn('Todo is not in the target list:', todoId, 'expected list:', listId);
+            return false;
+        }
+
+        const listTodos = todos.filter(t => t.listId === normalizedListId && t.id !== todoId);
+        const targetOrder = targetIndex * 1000 + 500; // 間に挿入できるよう500を加算
+        
+        const originalOrder = todo.order || 0;
+        todo.order = targetOrder;
+
+        // Undo履歴に記録
+        this.addToUndoStack({
+            type: 'updateTodoOrder',
+            todoId: todoId,
+            originalOrder: originalOrder,
+            newOrder: targetOrder
+        });
+
+        // 必要に応じて正規化
+        this.normalizeTodoOrders(todos, listId);
+        
+        console.log('TODO inserted at position:', todoId, 'at index', targetIndex);
+        return true;
     }
 
     /**

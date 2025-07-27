@@ -43,9 +43,14 @@ class DataManager {
         try {
             if (fs.existsSync(this.dataPath)) {
                 const data = JSON.parse(fs.readFileSync(this.dataPath, 'utf8'));
+                const todos = data.todos || [];
+                
+                // 既存のTODOデータにorder値を自動付与（移行処理）
+                this.migrateTodoOrders(todos);
+                
                 return {
                     lists: data.lists || [],
-                    todos: data.todos || []
+                    todos: todos
                 };
             }
         } catch (error) {
@@ -152,6 +157,54 @@ class DataManager {
      */
     dataFileExists() {
         return fs.existsSync(this.dataPath);
+    }
+
+    /**
+     * 既存のTODOデータにorder値を自動付与（移行処理）
+     * @param {Array} todos - TODOリスト（参照）
+     */
+    migrateTodoOrders(todos) {
+        let needsMigration = false;
+        
+        // order値が欠けているTODOを特定
+        todos.forEach(todo => {
+            if (todo.order === undefined || todo.order === null) {
+                needsMigration = true;
+            }
+        });
+        
+        if (!needsMigration) {
+            return; // 移行不要
+        }
+        
+        console.log('Migrating TODO orders...');
+        
+        // リスト別にグループ化
+        const todosByList = {};
+        todos.forEach(todo => {
+            const listId = todo.listId || 'default';
+            if (!todosByList[listId]) {
+                todosByList[listId] = [];
+            }
+            todosByList[listId].push(todo);
+        });
+        
+        // 各リスト内でorder値を割り当て
+        Object.keys(todosByList).forEach(listId => {
+            const listTodos = todosByList[listId];
+            
+            // createdAtでソートして順序を決める
+            listTodos.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+            
+            // order値を1000刻みで割り当て
+            listTodos.forEach((todo, index) => {
+                if (todo.order === undefined || todo.order === null) {
+                    todo.order = (index + 1) * 1000;
+                }
+            });
+        });
+        
+        console.log('TODO order migration completed');
     }
 }
 

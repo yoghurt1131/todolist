@@ -78,7 +78,7 @@ class ListOperations {
         // 名前が変更されていない場合
         if (previousName === trimmedName) {
             console.log('List name unchanged, skipping update');
-            return list;
+            return true;
         }
 
         // 重複チェック（自分以外）
@@ -99,7 +99,7 @@ class ListOperations {
 
         this.saveData();
         console.log('List updated:', previousName, '->', trimmedName);
-        return list;
+        return true;
     }
 
     /**

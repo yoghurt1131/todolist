@@ -311,15 +311,7 @@ body {
     border-left: 3px solid #007aff;
 }
 
-.todo-item.dragging {
-    opacity: 0.5;
-    transform: rotate(2deg);
-    cursor: grabbing;
-}
-
-.todo-item[draggable="true"] {
-    cursor: grab;
-}
+/* 既存のドラッグスタイルは下で統合済み */
 
 .todo-item.dragging-group {
     opacity: 0.7;
@@ -333,6 +325,44 @@ body {
     border-radius: 6px;
     border-left: 2px dashed #007aff;
     transition: all 0.15s ease;
+}
+
+/* ドロップインジケーター */
+.drop-indicator {
+    height: 2px;
+    background-color: #007AFF;
+    margin: 2px 0;
+    border-radius: 1px;
+    pointer-events: none;
+    animation: dropIndicatorPulse 1s ease-in-out infinite alternate;
+}
+
+@keyframes dropIndicatorPulse {
+    from { opacity: 0.6; }
+    to { opacity: 1; }
+}
+
+/* ドラッグ中のTODOアイテム */
+.todo-item.dragging {
+    opacity: 0.5;
+    transform: rotate(2deg);
+    cursor: grabbing;
+    z-index: 1000;
+}
+
+/* ドロップゾーン中のTODOアイテム */
+.todos-container.drag-over {
+    background-color: #f8f9fa;
+}
+
+/* ドラッグ可能なTODOアイテムのカーソル */
+.todo-item[draggable="true"]:not(.dragging) {
+    cursor: grab;
+}
+
+.todo-item[draggable="true"]:not(.dragging):hover {
+    cursor: grab;
+    background-color: #f5f5f5;
 }
 
 

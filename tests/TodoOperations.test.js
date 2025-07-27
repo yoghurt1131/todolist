@@ -16,9 +16,9 @@ describe('TodoOperations', () => {
         todoOperations = new TodoOperations(mockGenerateId, mockAddToUndoStack, mockSaveData);
         
         mockTodos = [
-            { id: 'todo1', text: 'Test todo 1', completed: false, listId: 'list1', createdAt: '2023-01-01T00:00:00.000Z' },
-            { id: 'todo2', text: 'Test todo 2', completed: true, listId: 'list2', createdAt: '2023-01-02T00:00:00.000Z' },
-            { id: 'todo3', text: 'Test todo 3', completed: false, listId: null, createdAt: '2023-01-03T00:00:00.000Z' }
+            { id: 'todo1', text: 'Test todo 1', completed: false, listId: 'list1', createdAt: '2023-01-01T00:00:00.000Z', order: 1000 },
+            { id: 'todo2', text: 'Test todo 2', completed: true, listId: 'list2', createdAt: '2023-01-02T00:00:00.000Z', order: 2000 },
+            { id: 'todo3', text: 'Test todo 3', completed: false, listId: null, createdAt: '2023-01-03T00:00:00.000Z', order: 3000 }
         ];
         
         mockLists = [
@@ -44,7 +44,8 @@ describe('TodoOperations', () => {
                 text: 'New todo',
                 completed: false,
                 listId: null,
-                createdAt: expect.any(String)
+                createdAt: expect.any(String),
+                order: expect.any(Number)
             }));
             expect(mockTodos).toHaveLength(4);
             expect(mockAddToUndoStack).toHaveBeenCalled();

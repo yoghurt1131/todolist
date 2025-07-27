@@ -124,6 +124,23 @@ class TodoApp {
         return this.getTodosForList(this.currentListId);
     }
 
+    getFilteredTodos() {
+        const todos = this.getTodosForList(this.currentListId);
+        
+        // renderTodosと同じソートロジックを適用
+        todos.sort((a, b) => {
+            if (a.completed !== b.completed) {
+                return a.completed ? 1 : -1;
+            }
+            // order値でソート（nullの場合はcreatedAtフォールバック）
+            const orderA = a.order !== undefined ? a.order : new Date(a.createdAt).getTime();
+            const orderB = b.order !== undefined ? b.order : new Date(b.createdAt).getTime();
+            return orderA - orderB;
+        });
+        
+        return todos;
+    }
+
     getIncompleteTodosCount(listId) {
         const todos = this.getTodosForList(listId);
         return todos.filter(todo => !todo.completed).length;
@@ -459,7 +476,10 @@ class TodoApp {
             if (a.completed !== b.completed) {
                 return a.completed ? 1 : -1;
             }
-            return new Date(b.createdAt) - new Date(a.createdAt);
+            // order値でソート（nullの場合はcreatedAtフォールバック）
+            const orderA = a.order !== undefined ? a.order : new Date(a.createdAt).getTime();
+            const orderB = b.order !== undefined ? b.order : new Date(b.createdAt).getTime();
+            return orderA - orderB;
         });
 
         todos.forEach(todo => {
@@ -609,6 +629,41 @@ class TodoApp {
                 allTodoItems.forEach(item => {
                     item.classList.remove('dragging-group');
                 });
+            });
+
+            // ドロップによる並び替え機能
+            todoItem.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                
+                // ドロップ位置の視覚的フィードバック
+                const afterElement = this.getDragAfterElement(todosContainer, e.clientY);
+                this.showDropIndicator(todosContainer, afterElement);
+            });
+
+            todoItem.addEventListener('dragleave', (e) => {
+                // コンテナ外に出た場合のみインジケーターを隠す
+                if (!todosContainer.contains(e.relatedTarget)) {
+                    this.hideDropIndicator();
+                }
+            });
+
+            todoItem.addEventListener('drop', (e) => {
+                e.preventDefault();
+                this.hideDropIndicator();
+
+                try {
+                    const draggedTodoIds = JSON.parse(e.dataTransfer.getData('text/plain'));
+                    if (draggedTodoIds && draggedTodoIds.length > 0) {
+                        // 同じリスト内での並び替え
+                        const targetTodoId = todo.id;
+                        this.reorderTodosInList(draggedTodoIds, targetTodoId);
+                        this.renderTodos();
+                        this.renderLists();
+                    }
+                } catch (error) {
+                    console.error('ドロップデータの解析に失敗:', error);
+                }
             });
 
             todosContainer.appendChild(todoItem);
@@ -900,6 +955,23 @@ class TodoApp {
                             todo.listId = targetListId === 'default' ? null : targetListId;
                         }
                     });
+                },
+                restoreTodoOrders: (todoIds, originalOrders) => {
+                    todoIds.forEach(todoId => {
+                        const todo = this.todos.find(t => t.id === todoId);
+                        if (todo && originalOrders[todoId] !== undefined) {
+                            todo.order = originalOrders[todoId];
+                        }
+                    });
+                },
+                updateTodoOrderById: (todoId, newOrder) => {
+                    const todo = this.todos.find(t => t.id === todoId);
+                    if (todo) {
+                        todo.order = newOrder;
+                    }
+                },
+                restoreMultipleTodos: (deletedTodos) => {
+                    this.todos.push(...deletedTodos);
                 }
             },
             listOps: {
@@ -1009,6 +1081,129 @@ class TodoApp {
         if (!element || !text) return false;
         // This method is handled internally by InlineEditor
         return true;
+    }
+
+    // ドラッグ&ドロップ並び替え用ヘルパーメソッド
+
+    /**
+     * ドロップ位置を判定する
+     * @param {HTMLElement} container - TODOコンテナ
+     * @param {number} y - マウスのY座標
+     * @returns {HTMLElement|null} ドロップ後の要素
+     */
+    getDragAfterElement(container, y) {
+        const draggableElements = [...container.querySelectorAll('.todo-item:not(.dragging)')];
+        
+        return draggableElements.reduce((closest, child) => {
+            const box = child.getBoundingClientRect();
+            const offset = y - box.top - box.height / 2;
+            
+            if (offset < 0 && offset > closest.offset) {
+                return { offset: offset, element: child };
+            } else {
+                return closest;
+            }
+        }, { offset: Number.NEGATIVE_INFINITY }).element;
+    }
+
+    /**
+     * ドロップインジケーターを表示
+     * @param {HTMLElement} container - TODOコンテナ
+     * @param {HTMLElement|null} afterElement - インジケーターを表示する要素
+     */
+    showDropIndicator(container, afterElement) {
+        this.hideDropIndicator(); // 既存のインジケーターを削除
+
+        const indicator = document.createElement('div');
+        indicator.className = 'drop-indicator';
+        indicator.style.cssText = `
+            height: 2px;
+            background-color: #007AFF;
+            margin: 2px 0;
+            border-radius: 1px;
+            pointer-events: none;
+        `;
+
+        if (afterElement) {
+            container.insertBefore(indicator, afterElement);
+        } else {
+            container.appendChild(indicator);
+        }
+    }
+
+    /**
+     * ドロップインジケーターを隠す
+     */
+    hideDropIndicator() {
+        const indicator = document.querySelector('.drop-indicator');
+        if (indicator) {
+            indicator.remove();
+        }
+    }
+
+    /**
+     * 同じリスト内でのTODO並び替え
+     * @param {Array<string>} draggedTodoIds - ドラッグされたTODO IDの配列
+     * @param {string} targetTodoId - ドロップ先のTODO ID
+     */
+    reorderTodosInList(draggedTodoIds, targetTodoId) {
+        if (!draggedTodoIds || draggedTodoIds.length === 0 || !targetTodoId) {
+            return;
+        }
+
+        // ドラッグされたTODOが1つの場合とターゲットが同じ場合は何もしない
+        if (draggedTodoIds.length === 1 && draggedTodoIds[0] === targetTodoId) {
+            return;
+        }
+
+        // 現在のリストのTODOを取得
+        const currentListTodos = this.getFilteredTodos();
+        
+        // ターゲットTODOのインデックスを取得
+        const targetIndex = currentListTodos.findIndex(todo => todo.id === targetTodoId);
+        if (targetIndex === -1) {
+            console.warn('Target todo not found in current list:', targetTodoId);
+            return;
+        }
+
+        // ドラッグされたTODOを除外した新しい配列を作成
+        const remainingTodos = currentListTodos.filter(todo => !draggedTodoIds.includes(todo.id));
+        
+        // ドラッグされたTODOオブジェクトを取得
+        const draggedTodos = draggedTodoIds.map(id => 
+            currentListTodos.find(todo => todo.id === id)
+        ).filter(todo => todo !== undefined);
+
+        // 新しい順序でTODO IDの配列を作成
+        const newOrderTodoIds = [];
+        
+        // ターゲット位置まで追加
+        for (let i = 0; i < targetIndex; i++) {
+            if (remainingTodos[i] && !draggedTodoIds.includes(remainingTodos[i].id)) {
+                newOrderTodoIds.push(remainingTodos[i].id);
+            }
+        }
+        
+        // ドラッグされたTODOを挿入
+        draggedTodos.forEach(todo => {
+            newOrderTodoIds.push(todo.id);
+        });
+        
+        // 残りのTODOを追加
+        for (let i = targetIndex; i < remainingTodos.length; i++) {
+            if (remainingTodos[i] && !draggedTodoIds.includes(remainingTodos[i].id)) {
+                newOrderTodoIds.push(remainingTodos[i].id);
+            }
+        }
+
+        // TodoOperationsを使って並び替えを実行
+        const success = this.todoOperations.reorderTodos(newOrderTodoIds, this.currentListId, this.todos);
+        
+        if (success) {
+            console.log('TODOs reordered successfully');
+        } else {
+            console.warn('Failed to reorder TODOs');
+        }
     }
 
 }
