@@ -362,7 +362,10 @@ body {
 
 .todo-item[draggable="true"]:not(.dragging):hover {
     cursor: grab;
-    background-color: #f5f5f5;
+    background-color: #f0f8ff;
+    border-radius: 6px;
+    border-left: 2px solid #007aff;
+    transition: all 0.1s ease;
 }
 
 

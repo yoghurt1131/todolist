@@ -547,11 +547,17 @@ class TodoApp {
                     }
                 });
 
-                // Shift+マウスオーバーで範囲選択プレビュー
+                // マウスオーバーで選択（フォーカス選択）
                 text.addEventListener('mouseenter', (e) => {
                     const lastSelectedId = this.selectionManager.getLastSelectedId();
+                    
+                    // Shift+マウスオーバーで範囲選択プレビュー
                     if (e.shiftKey && lastSelectedId && lastSelectedId !== todo.id) {
                         this.showRangePreview(lastSelectedId, todo.id);
+                    } else {
+                        // 通常のマウスオーバーで選択（複数選択は維持しない）
+                        this.selectTodo(todo.id, false, false);
+                        this.renderTodos();
                     }
                 });
 
@@ -749,6 +755,17 @@ class TodoApp {
                 this.hideContextMenu();
             }
         });
+
+        // TODOsコンテナからマウスが離れた時の処理
+        const todosContainer = document.querySelector('.todos-container');
+        if (todosContainer) {
+            todosContainer.addEventListener('mouseleave', (e) => {
+                // TODOsエリア外に出た場合、選択をクリア（任意）
+                // この動作が不要な場合はコメントアウト
+                // this.selectionManager.clearSelection();
+                // this.renderTodos();
+            });
+        }
 
         // キーボードイベントでShiftキーの状態を監視
         document.addEventListener('keyup', (e) => {
