@@ -329,17 +329,49 @@ body {
 
 /* ドロップインジケーター */
 .drop-indicator {
-    height: 2px;
-    background-color: #007AFF;
-    margin: 2px 0;
-    border-radius: 1px;
+    height: 3px;
+    background: #007AFF;
+    margin: 8px 0;
+    border-radius: 2px;
     pointer-events: none;
+    position: relative;
     animation: dropIndicatorPulse 1s ease-in-out infinite alternate;
+    box-shadow: 0 0 6px rgba(0, 122, 255, 0.5);
+}
+
+.drop-indicator::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 8px;
+    height: 8px;
+    background-color: #007AFF;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 8px rgba(0, 122, 255, 0.6);
+    animation: dropIndicatorBounce 1s ease-in-out infinite alternate;
 }
 
 @keyframes dropIndicatorPulse {
-    from { opacity: 0.6; }
-    to { opacity: 1; }
+    0% { 
+        opacity: 0.6;
+        transform: scaleX(0.9);
+    }
+    100% { 
+        opacity: 1;
+        transform: scaleX(1);
+    }
+}
+
+@keyframes dropIndicatorBounce {
+    0% { 
+        transform: translate(-50%, -50%) scale(0.8);
+    }
+    100% { 
+        transform: translate(-50%, -50%) scale(1.1);
+    }
 }
 
 /* ドラッグ中のTODOアイテム */
@@ -352,7 +384,10 @@ body {
 
 /* ドロップゾーン中のTODOアイテム */
 .todos-container.drag-over {
-    background-color: #f8f9fa;
+    background-color: #f0f8ff;
+    border: 2px dashed rgba(0, 122, 255, 0.3);
+    border-radius: 8px;
+    transition: all 0.2s ease;
 }
 
 /* ドラッグ可能なTODOアイテムのカーソル */

@@ -425,19 +425,33 @@ class TodoOperations {
         // 現在のorder値を保存（Undo用）
         todoIds.forEach(todoId => {
             const todo = todos.find(t => t.id === todoId);
-            if (todo && todo.listId === normalizedListId) {
-                originalOrders[todoId] = todo.order || 0;
+            if (todo) {
+                // リストIDのマッチング修正：nullとnullの比較、または正確な文字列マッチング
+                const todoListId = todo.listId;
+                const isMatchingList = (todoListId === null && normalizedListId === null) || 
+                                     (todoListId !== null && todoListId === normalizedListId);
+                
+                if (isMatchingList) {
+                    originalOrders[todoId] = todo.order || 0;
+                }
             }
         });
 
         // 新しいorder値を設定
         todoIds.forEach((todoId, index) => {
             const todo = todos.find(t => t.id === todoId);
-            if (todo && todo.listId === normalizedListId) {
-                const newOrder = (index + 1) * 1000;
-                if (todo.order !== newOrder) {
-                    todo.order = newOrder;
-                    reordered = true;
+            if (todo) {
+                // リストIDのマッチング修正：nullとnullの比較、または正確な文字列マッチング
+                const todoListId = todo.listId;
+                const isMatchingList = (todoListId === null && normalizedListId === null) || 
+                                     (todoListId !== null && todoListId === normalizedListId);
+                
+                if (isMatchingList) {
+                    const newOrder = (index + 1) * 1000;
+                    if (todo.order !== newOrder) {
+                        todo.order = newOrder;
+                        reordered = true;
+                    }
                 }
             }
         });
